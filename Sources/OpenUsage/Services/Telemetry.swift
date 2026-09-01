@@ -1,26 +1,20 @@
 import Foundation
 import PostHog
 
-/// Build-time configuration for the PostHog project. The project token is a client-side, write-only
-/// key (it ships in every distributed binary, like any analytics SDK key), so it is safe to commit;
-/// an `OPENUSAGE_POSTHOG_TOKEN` environment override is supported for local testing without editing
-/// source. The host is region-bound — a US token will not ingest against the EU host.
+/// Build-time configuration for the PostHog project. This is a local no-telemetry build: no project
+/// token is baked in and the `OPENUSAGE_POSTHOG_TOKEN` environment override has been removed, so the
+/// resolved token is always the placeholder and the sink can never be armed. The host constant is
+/// retained only because `PostHogTelemetrySink` still references it; it is never reached.
 enum TelemetryConfig {
     /// Sentinel meaning "no real token configured" — the sink stays inert (no setup, no network) while
     /// the resolved token equals this. Do NOT change this value.
     static let placeholderToken = "phc_REPLACE_ME"
 
-    /// The project token baked into the build. Replace `phc_REPLACE_ME` with the real US-region
-    /// `phc_…` key (safe to commit — it's a client write-only key), or leave it and set
-    /// `OPENUSAGE_POSTHOG_TOKEN` at runtime for local testing.
-    private static let bakedToken = "phc_vGEqXEpQNwViyKnMNWvmKWpv8XxMT3yaeYi6gfidr4nf"
+    /// No token in this build. Upstream bakes a real US-region `phc_…` key here; leaving it as the
+    /// placeholder is upstream's own supported way to produce a build that never phones home.
+    private static let bakedToken = placeholderToken
 
-    static var token: String {
-        let env = ProcessInfo.processInfo.environment["OPENUSAGE_POSTHOG_TOKEN"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if let env, !env.isEmpty { return env }
-        return bakedToken
-    }
+    static var token: String { bakedToken }
 
     /// US cloud. Switch to "https://eu.i.posthog.com" only with an EU-region project token.
     static let host = "https://us.i.posthog.com"

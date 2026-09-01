@@ -10,8 +10,8 @@ What the app does and how it behaves. These pages describe **behavior, not visua
 - [Refreshing & caching](refreshing.md) — when data updates and what happens when a fetch fails
 - [iCloud Sync](icloud-sync.md) — how spend history is combined across Macs
 - [Model pricing](pricing.md) — how spend tiles price tokens, and where the rates come from
-- [Updates](updates.md) — automatic updates, manual checks, and the beta channel
-- [Privacy & usage data](privacy.md) — daily activity, crash reports, and optional usage analytics
+- [Updates](updates.md) — not available in this fork (no update feed)
+- [Privacy & usage data](privacy.md) — this fork sends nothing, and how to verify that
 
 ## Integrations
 
@@ -42,3 +42,4 @@ How the app is built and how to extend it.
 - [Adding a provider](adding-a-provider.md) — the metric contract and the register/test/document steps
 - [Debugging & capturing logs](debugging.md) — running a local build and streaming logs
 - [Logging](logging.md) — the file log, log levels, subsystem tags, and what is never logged
+- [Maintaining this fork](fork-maintenance.md) — rebasing onto a new upstream tag, and what to re-verify

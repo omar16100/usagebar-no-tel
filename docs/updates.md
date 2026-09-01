@@ -1,5 +1,15 @@
 # Updates
 
+> **Not available in this fork.** This build ships no `SUFeedURL`, so Sparkle is never armed: the
+> app logs `updates] disabled: no SUFeedURL` at launch, never checks, and the Updates section does
+> not appear in Settings. That is deliberate, since an update feed pointing at upstream's signed
+> releases would replace this patched build with one that has telemetry enabled.
+>
+> To move to a newer upstream version, rebase and rebuild. See
+> [Maintaining this fork](fork-maintenance.md).
+>
+> The rest of this page describes the official app, and is kept for reference.
+
 OpenUsage keeps itself up to date using [Sparkle](https://sparkle-project.org), the standard update
 framework for Mac apps. Updates are downloaded from OpenUsage's own release feed and verified before
 they install, so you always get a genuine, unmodified build.

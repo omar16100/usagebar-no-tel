@@ -8,7 +8,7 @@ the level to Debug surfaces the extra detail in both places (see [Debugging](deb
 ## Where the log file lives
 
 ```
-~/Library/Logs/OpenUsage/OpenUsage.log
+~/Library/Logs/UsageBar/UsageBar.log
 ```
 
 The easiest way to grab it: open Settings -> Advanced and use **Copy Log Path** (puts the path on the
@@ -49,7 +49,7 @@ Every line is prefixed with a bracketed tag so the log is easy to grep:
 For example, to follow just the refresh cycle:
 
 ```sh
-grep '\[refresh\]' ~/Library/Logs/OpenUsage/OpenUsage.log
+grep '\[refresh\]' ~/Library/Logs/UsageBar/UsageBar.log
 ```
 
 ## What is never logged
@@ -63,10 +63,14 @@ original app's, and a test suite guards them.
 
 ## File size cap
 
-The log is capped at ~10 MB. When it fills up, the current file is rotated to `OpenUsage.1.log` and a
-fresh `OpenUsage.log` starts, so a long-running session can never fill your disk (at most ~20 MB across
+The log is capped at ~10 MB. When it fills up, the current file is rotated to `UsageBar.1.log` and a
+fresh `UsageBar.log` starts, so a long-running session can never fill your disk (at most ~20 MB across
 the live file and one archive). An oversize file left over from a previous session is rotated once at
 launch.
 
-> Note: the dev build and a released build both write to the same `OpenUsage.log`. Running them at the
-> same time interleaves their lines — fine for normal use, worth knowing if you debug both at once.
+> Note: this fork logs to `Logs/UsageBar/`, not upstream's `Logs/OpenUsage/`, so it no longer
+> interleaves with an installed official app. Upstream's dev and release builds do share one file.
+>
+> Note: `swift test` writes here too, because `LogFile.shared` uses the production path. A test run
+> leaves real-looking `[ERROR]` lines about expired credentials and HTTP 503s that are tests
+> exercising failure paths. Read only forward from the `UsageBar v… starting` line.

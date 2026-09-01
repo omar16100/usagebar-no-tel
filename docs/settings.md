@@ -58,14 +58,14 @@ All three alerts default off. The first time you turn one on, OpenUsage asks for
 | Setting | Options | What it does |
 |---|---|---|
 | Hide From Screen Share | On / Off | Off (default). On replaces the menu bar strip with the OpenUsage icon and wordmark while your screen is being shared or recorded, and restores your starred metrics the moment the capture ends. See [Menu bar](menu-bar.md#hiding-usage-while-screen-sharing). |
-| Help make OpenUsage better by sharing anonymous usage analytics | On / Off | On (default) shares extra anonymous usage analytics — provider-refresh summaries and error categories. Off stops that extra sharing. Daily activity and crash reports are always sent. See [Privacy & Usage Data](privacy.md) for exactly what is and isn't sent. |
+| Help make UsageBar better by sharing anonymous usage analytics | On / Off | **Inert in this fork.** The toggle still stores a preference, but no telemetry transport is ever constructed, so nothing is sent either way and the inherited label overstates what it does. See [Privacy & Usage Data](privacy.md). |
 
 ## Advanced
 
 | Setting | Options | What it does |
 |---|---|---|
 | Log Level | Error / Warning / Info / Debug | How much detail the app writes to its log file. Defaults to Info and persists across launches; raise to Debug while reproducing a problem. Applies immediately. |
-| Copy Log Path | button | Copies the log file path (`~/Library/Logs/OpenUsage/OpenUsage.log`) to the clipboard. |
+| Copy Log Path | button | Copies the log file path (`~/Library/Logs/UsageBar/UsageBar.log`) to the clipboard. |
 | Reveal in Finder | button | Opens a Finder window with the log file selected. |
 | Reset All Settings… | button | Restores every setting to its default, behind a confirmation alert. |
 

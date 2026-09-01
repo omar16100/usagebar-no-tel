@@ -44,9 +44,14 @@ than `OpenUsage`, so provider APIs and the UI do not present this build as upstr
 Requires macOS 15 or later and a Swift 6.2 toolchain (Xcode 26 or later).
 
 ```sh
-swift test                    # 1227 tests
+swift test                    # 1227 tests, 3 skipped, 1 known failure (see below)
 script/build_and_run.sh run   # stages dist/UsageBar.app and launches it
 ```
+
+`swift test` reports one failure,
+`CodexProviderTests.testNoUsageDataBadgeIsDroppedWhenLocalLogsHaveSpend`. It is pre-existing upstream
+at `v0.7.10`, not caused by anything in this fork. Anything above one failure means something here is
+broken.
 
 There are no prebuilt binaries and no update feed. The build has no app icon, since upstream's was
 removed, and it is ad-hoc signed unless you set `CODESIGN_IDENTITY`, so macOS will ask permission
@@ -60,6 +65,19 @@ grep "telemetry inert" ~/Library/Logs/UsageBar/UsageBar.log         # expect a m
 nettop -x -l 120 -p $(pgrep -f dist/UsageBar.app)                   # expect provider APIs only
 ```
 
+Polling `lsof` once a second is not sensitive enough for the third check, since provider calls are
+sub-second. `nettop` tracks flows and does catch them.
+
 Note that upstream's PostHog project token still exists in the inherited git history. It is a
 client-side write-only key that upstream publishes in its own public repository, so this is not a
 leaked secret.
+
+## Documentation
+
+- [Privacy & usage data](docs/privacy.md), what is not sent and how to verify it
+- [Maintaining this fork](docs/fork-maintenance.md), rebasing onto a newer upstream tag and what to
+  re-check afterwards
+- [docs/](docs/README.md) is inherited from upstream. Pages describing features this build does not
+  have (updates, iCloud sync) carry a notice at the top
+
+Design notes for both changes are in [docs/plans](docs/plans/index.md).

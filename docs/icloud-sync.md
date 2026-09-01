@@ -1,5 +1,12 @@
 # iCloud Sync
 
+> **Unavailable in this fork.** iCloud sync needs a matching provisioning profile, and this build is
+> ad-hoc signed with no Apple Development identity, so `build_and_run.sh` reports "no matching
+> installed iCloud provisioning profile was found; iCloud Sync will be unavailable in this build".
+> The toggle is off by default and cannot be usefully enabled.
+>
+> The rest of this page describes the official app, and is kept for reference.
+
 **Sync Across Macs** is off by default. When it is on, each Mac writes one versioned OpenUsage history
 file to the app's private iCloud container and reads the files written by other Macs signed into the same
 iCloud account. A random device ID is kept in the login Keychain so the same Mac continues updating its

@@ -75,8 +75,10 @@ Built with upstream's own `script/build_and_run.sh`, which stages the bundle und
 
 Properties of the resulting build, all verified:
 
-- Bundle id `com.robinebers.openusage.dev`, so it keeps its own settings and keychain grants and
-  does not disturb the installed notarized app.
+- Bundle id `io.github.omar16100.usagebar` and app name `UsageBar`, renamed from upstream's per
+  their TRADEMARK.md, so it keeps its own settings and does not disturb the installed notarized app.
+  The log also moved to `~/Library/Logs/UsageBar/UsageBar.log`, which additionally stops it sharing a
+  log file with the official app.
 - No `SUFeedURL` in `Info.plist`, so Sparkle cannot auto-update the patched build back to the
   notarized release.
 - Ad-hoc signed. This machine has no Apple Development identity (`security find-identity` reports

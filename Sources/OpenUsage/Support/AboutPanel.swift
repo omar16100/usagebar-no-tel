@@ -1,6 +1,6 @@
 import AppKit
 
-/// Presents the standard macOS About panel for the footer menu's "About OpenUsage" item.
+/// Presents the standard macOS About panel for the footer menu's "About UsageBar" item.
 ///
 /// As a menu-bar accessory app, OpenUsage is not the active app while the popover is showing, so the
 /// app is activated first — otherwise the panel would open behind whatever app currently owns the

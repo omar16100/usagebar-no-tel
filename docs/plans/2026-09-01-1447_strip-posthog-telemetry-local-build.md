@@ -6,7 +6,7 @@ Base: upstream `robinebers/openusage` at tag `v0.7.10` (clean clone, detached HE
 
 ## Objective
 
-Run OpenUsage on an FPG work machine with no telemetry leaving the device.
+Run OpenUsage on a managed work machine with no telemetry leaving the device.
 
 The shipped notarized build exposes an in-app "optional analytics" toggle, but that toggle is
 partial by design. Two signals ignore it:

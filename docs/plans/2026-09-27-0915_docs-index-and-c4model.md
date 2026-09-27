@@ -32,3 +32,8 @@ the inherited upstream prose).
 ## Status
 
 - 27 Sep 2026: drafted from source at `6fd60f9`; under codex review.
+- 27 Sep 2026: codex review round 1 (no blockers, 2 major, 9 minor) applied: cache freshness and
+  forced-refresh rules, the gauge glyph still bundled as `ProviderIcons/openusage.svg`, Antigravity
+  HTTP fallbacks, on-demand pricing revalidation, Claude env-token and Cowork history, Claude host
+  overrides, `$XDG_DATA_HOME/opencode`, iCloud availability depending on a provisioning profile,
+  conditional login-shell wait at launch, and a dated source for the fork-network and Actions claims.

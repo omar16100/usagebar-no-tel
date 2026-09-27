@@ -12,7 +12,8 @@ Status: current. Last updated 27 Sep 2026. Written from the Swift source on `no-
 
 UsageBar is a macOS 15+ menu bar app that shows how much of each AI coding subscription the user
 has used. It reads credentials and usage logs that the provider tools already left on the Mac, calls
-each provider's own usage API with them, and renders the normalized result in a menu bar panel.
+the provider's own usage API with them where one is available, and renders the normalized result
+in a menu bar panel.
 
 ```mermaid
 flowchart LR
@@ -23,14 +24,14 @@ flowchart LR
     ls["Antigravity language server<br/>(local process, 127.0.0.1)"]
     providers["Provider usage APIs<br/>(Anthropic, OpenAI/ChatGPT, Cursor, Google Cloud Code,<br/>GitHub, Codeium, xAI Grok, OpenCode, OpenRouter, Z.ai)"]
     pricing["Model pricing feeds<br/>(LiteLLM, models.dev, upstream pricing supplement)"]
-    icloud["iCloud private container<br/>(opt-in, unavailable in this fork's build)"]
+    icloud["iCloud private container<br/>(opt-in; unavailable without a matching provisioning profile)"]
 
     user -- "menu bar panel, settings" --> app
     scripts -- "openusage CLI / GET 127.0.0.1:6736" --> app
     app -- "file reads, /usr/bin/security, /usr/bin/sqlite3" --> local
-    app -- "ps + lsof discovery, loopback HTTPS" --> ls
-    app -- "HTTPS (optional proxy)" --> providers
-    app -- "HTTPS, hourly" --> pricing
+    app -- "ps + lsof discovery, loopback HTTPS or HTTP" --> ls
+    app -- "HTTPS by default (optional proxy)" --> providers
+    app -- "HTTPS, revalidated when older than an hour" --> pricing
     app -. "NSFileCoordinator, NSMetadataQuery" .-> icloud
 ```
 
@@ -38,12 +39,12 @@ External systems the code calls, and where:
 
 | System | How | Code |
 |---|---|---|
-| Provider usage APIs (per-provider hosts in section 4) | HTTPS via `URLSessionHTTPClient`; optional SOCKS5/HTTP(S) proxy read once from `~/.openusage/config.json` | `Sources/OpenUsage/Services/HTTPClient.swift`, `Sources/OpenUsage/Services/ProxyConfig.swift`, `Sources/OpenUsage/Providers/*/*UsageClient.swift` |
+| Provider usage APIs (per-provider hosts in section 4) | HTTPS to the default hosts via `URLSessionHTTPClient` (some hosts can be overridden by environment variables, see section 4); optional SOCKS5/HTTP(S) proxy read once from `~/.openusage/config.json` | `Sources/OpenUsage/Services/HTTPClient.swift`, `Sources/OpenUsage/Services/ProxyConfig.swift`, `Sources/OpenUsage/Providers/*/*UsageClient.swift` |
 | Local credentials | File reads; keychain via `/usr/bin/security` and the Security framework; SQLite via `/usr/bin/sqlite3`; environment variables, including ones captured from the user's login shell | `Sources/OpenUsage/Services/SystemClients.swift`, `Sources/OpenUsage/Services/LoginShellEnvironment.swift`, `Sources/OpenUsage/Providers/*/*AuthStore.swift` |
 | Local usage logs of coding agents | Incremental JSONL scans (Claude Code, Codex, Grok, pi); SQLite queries (OpenCode); conversation DB scan (Antigravity CLI) | `Sources/OpenUsage/Providers/IncrementalJSONLScanner.swift`, `Sources/OpenUsage/Providers/*/*Scanner.swift` |
-| Antigravity language server | Finds the running `language_server` or `agy` process with `/bin/ps` and `lsof`, then calls its Connect-RPC service on `127.0.0.1` over self-signed HTTPS | `Sources/OpenUsage/Services/LanguageServerDiscovery.swift`, `Sources/OpenUsage/Providers/Antigravity/AntigravityUsageClient.swift` |
-| Model pricing feeds | Hourly HTTPS refresh of `raw.githubusercontent.com/BerriAI/litellm/.../model_prices_and_context_window.json`, `models.dev/api.json` and `robinebers.github.io/openusage/pricing_supplement.json`; bundled snapshots in `Sources/OpenUsage/Resources/` cover first launch and offline use | `Sources/OpenUsage/Pricing/ModelPricingStore.swift` |
-| iCloud private container | Opt-in "Sync Across Macs"; one coordinated history file per Mac | `Sources/OpenUsage/Stores/ICloudUsageSyncStore.swift` |
+| Antigravity language server | Finds the running `language_server` or `agy` process with `/bin/ps` and `lsof`, then calls its Connect-RPC service on `127.0.0.1` with the CSRF token from the process arguments: HTTPS (self-signed) first, then HTTP on the same ports, then the HTTP extension port | `Sources/OpenUsage/Services/LanguageServerDiscovery.swift`, `Sources/OpenUsage/Providers/Antigravity/AntigravityUsageClient.swift` |
+| Model pricing feeds | HTTPS fetch, started in the background by `ModelPricingStore.current()` when a source was last fetched more than an hour ago (30 minutes after a failure), of `raw.githubusercontent.com/BerriAI/litellm/.../model_prices_and_context_window.json`, `models.dev/api.json` and `robinebers.github.io/openusage/pricing_supplement.json`; bundled snapshots in `Sources/OpenUsage/Resources/` cover first launch and offline use | `Sources/OpenUsage/Pricing/ModelPricingStore.swift` |
+| iCloud private container | Opt-in "Sync Across Macs"; one coordinated history file per Mac. `script/build_and_run.sh` warns that sync is unavailable when no matching iCloud provisioning profile is installed, which is the case for the fork's default ad-hoc build | `Sources/OpenUsage/Stores/ICloudUsageSyncStore.swift` |
 | macOS services | `NSStatusItem` menu bar item, `UNUserNotificationCenter` quota alerts, `SMAppService` launch at login, a runtime-resolved window server symbol for screen-share detection | `Sources/OpenUsage/App/StatusItemController.swift`, `Sources/OpenUsage/Support/AppNotifications.swift`, `Sources/OpenUsage/Stores/LaunchAtLoginSetting.swift`, `Sources/OpenUsage/Services/ScreenCaptureProbe.swift` |
 
 Linked but not contacted by this fork's build:
@@ -88,8 +89,10 @@ Tests: `Tests/OpenUsageTests` (module) and `Tests/OpenUsageCLITests` (CLI).
 
 App/
 - `AppDelegate` (`App/OpenUsageApp.swift`): launch order is `AppLog.bootstrap`, `SingleInstanceLock`,
-  `SettingsMigrator`, `LegacyLaunchAgentCleanup`, login-shell capture, then `AppContainer`,
-  `StatusItemController` and `UpdaterController.start()`.
+  `SettingsMigrator`, `LegacyLaunchAgentCleanup`, `AppearanceSetting.applyCurrent()`, then
+  `AppContainer`, `StatusItemController` and `UpdaterController.start()`. It waits for the
+  login-shell environment capture first only when there is neither a saved shell snapshot nor a
+  completed capture; otherwise `AppContainer` prewarms the capture in the background.
 - `AppContainer`: composition root. Builds providers from `ProviderCatalog`, the `WidgetRegistry`,
   every store, `CodexResetClaimService`, `TelemetryRecorder` and `LocalUsageServer`, and runs the
   periodic refresh loop.
@@ -109,8 +112,13 @@ Providers/
 - `Codex/CodexResetClaimService`: claims Codex rate-limit reset credits. The only provider-API write.
 
 Stores/
-- `WidgetDataStore`: per-provider refresh, cache hit/miss, failure backoff, last-good snapshots.
-- `ProviderSnapshotCache`: persisted snapshots, fresh for one `RefreshSetting.interval` (5 minutes).
+- `WidgetDataStore`: per-provider refresh returning a `RefreshOutcome` (`.refreshed`, `.cacheHit`,
+  `.backedOff`, `.failed`, `.skipped`), failure backoff, last-good snapshots.
+- `ProviderSnapshotCache`: snapshots persisted in `UserDefaults`. In the app, a snapshot counts as
+  fresh only if it was written this session and is younger than `RefreshSetting.interval`
+  (5 minutes); snapshots loaded from disk at launch are shown but refreshed on the first pass. The
+  CLI opts into timestamp-only freshness (`allowsPersistedFreshness`). An entry stamped with a
+  different account identity is never treated as fresh.
 - `LayoutStore`, `ProviderEnablementStore`, `NotificationSettingsStore`, `MenuBarPrivacyStore`,
   `PopoverNavigationStore` (screens: dashboard, customize, settings).
 - `ICloudUsageSyncStore`: opt-in history sync.
@@ -124,7 +132,8 @@ Services/
 - `Telemetry.swift`: `TelemetryConfig` and `PostHogTelemetrySink`.
 
 Pricing/
-- `ModelPricingStore`: bundled snapshots + disk cache + hourly stale-while-revalidate refresh.
+- `ModelPricingStore`: bundled snapshots + disk cache + stale-while-revalidate refresh (a source is
+  due one hour after its last success, 30 minutes after a failure).
   Used to price tokens into spend for Claude, Codex, Cursor, Grok and Antigravity.
 
 Views/ and Support/
@@ -137,14 +146,14 @@ Credential sources and hosts as written in each provider folder under `Sources/O
 
 | Provider | Credentials read from | Remote hosts | Local usage history |
 |---|---|---|---|
-| Claude | `~/.claude/.credentials.json` or `$CLAUDE_CONFIG_DIR`; keychain `Claude Code-credentials` (suffixed variants for non-default homes or OAuth endpoints); `CLAUDE_CODE_OAUTH_TOKEN`; Claude Desktop (keychain `Claude Safe Storage` plus files under `~/Library/Application Support/Claude/`) | `api.anthropic.com`, `platform.claude.com` (token refresh) | JSONL under `~/.claude` and `$XDG_CONFIG_HOME/claude` (or `$CLAUDE_CONFIG_DIR`), plus pi sessions |
+| Claude | `~/.claude/.credentials.json` or `$CLAUDE_CONFIG_DIR`; keychain `Claude Code-credentials` (suffixed variants for non-default homes or OAuth endpoints); `CLAUDE_CODE_OAUTH_TOKEN` (no live usage call with this token, local history only); Claude Desktop (keychain `Claude Safe Storage` plus files under `~/Library/Application Support/Claude/`) | Defaults `api.anthropic.com` and `platform.claude.com` (token refresh); `CLAUDE_CODE_CUSTOM_OAUTH_URL` and staging/local switches can override them (`ClaudeAuthStore.resolveOAuthEndpoints`) | JSONL under `~/.claude` and `$XDG_CONFIG_HOME/claude` (or `$CLAUDE_CONFIG_DIR`), Cowork sessions under `~/Library/Application Support/Claude/local-agent-mode-sessions`, plus pi sessions |
 | Codex | `auth.json` in `$CODEX_HOME`, `~/.config/codex` or `~/.codex`; keychain `Codex Auth` | `chatgpt.com/backend-api/wham/...`, `auth.openai.com` (token refresh) | `sessions/` and `archived_sessions/` JSONL under `$CODEX_HOME` or `~/.codex`, plus pi sessions |
 | Cursor | Cursor's `state.vscdb` (via sqlite3); keychain `cursor-access-token`, `cursor-refresh-token` | `api2.cursor.sh`, `cursor.com/api/...` (includes the usage CSV export) | none on disk |
-| Antigravity | keychain `gemini` (account `antigravity`), own cache under Application Support | local language server; `daily-cloudcode-pa.googleapis.com`, `cloudcode-pa.googleapis.com`, `oauth2.googleapis.com` | `~/.gemini/antigravity-cli/conversations` |
+| Antigravity | Local language server: CSRF token from the running process's arguments. Cloud fallback: keychain `gemini` (account `antigravity`) plus own token cache under Application Support | Local language server first; then `daily-cloudcode-pa.googleapis.com`, `cloudcode-pa.googleapis.com`, `oauth2.googleapis.com` | `~/.gemini/antigravity-cli/conversations` |
 | Copilot | `~/.config/github-copilot/apps.json` and `hosts.json`, `~/.config/gh/hosts.yml`, keychain `gh:github.com` | `api.github.com` | none |
 | Devin | `~/.local/share/devin/credentials.toml`, Devin's `state.vscdb` | `server.codeium.com` by default | none |
 | Grok | `~/.grok/auth.json` | `cli-chat-proxy.grok.com`, `auth.x.ai` | JSONL under `$GROK_HOME` or `~/.grok` |
-| OpenCode | `auth.json` (`opencode-go` key) in the OpenCode data dir | `opencode.ai` | `opencode*.db` in `~/.local/share/opencode` (or `$OPENCODE_DATA_DIR`, `$XDG_DATA_HOME`) |
+| OpenCode | `auth.json` (`opencode-go` key) in the OpenCode data dir | `opencode.ai`, only when the `opencode-go` key exists | `opencode*.db` in `~/.local/share/opencode` (or `$OPENCODE_DATA_DIR`, `$XDG_DATA_HOME/opencode`) |
 | OpenRouter | `~/.config/openusage/openrouter.json`, `~/.config/openrouter/key.json`, `OPENROUTER_API_KEY`, `OPENROUTER_KEY` | `openrouter.ai` | none |
 | Z.ai | `~/.config/openusage/zai.json`, `~/.config/zai/key.json`, `ZAI_API_KEY`, `GLM_API_KEY` | `api.z.ai` | none |
 
@@ -153,10 +162,12 @@ Credential sources and hosts as written in each provider folder under `Sources/O
 1. Periodic refresh. `AppContainer.startPeriodicRefresh` loops: `WidgetDataStore.refreshAll()`, then
    `evaluateNotifications()`, then `TelemetryRecorder.tick()`, then sleep until
    `RefreshSetting.interval` or an early wake from `RefreshWakeSignal` (provider enable/disable).
-2. One provider refresh. `WidgetDataStore.refresh` returns the cached snapshot while it is fresh and
-   skips a provider in failure backoff. Otherwise the provider's `refresh()` loads credentials off
-   the main actor (`loadOffMainActor`), calls its API through `HTTPClient`, optionally scans local
-   logs and prices tokens through `ModelPricingStore`, and maps the result to a `ProviderSnapshot`.
+2. One provider refresh. Unless forced, `WidgetDataStore.refresh` serves a fresh cached snapshot
+   (`.cacheHit`) and skips a provider still in failure backoff (`.backedOff`); a forced refresh
+   bypasses both. Otherwise the provider's `refresh()` loads credentials off the main actor
+   (`loadOffMainActor`), calls its API through `HTTPClient` when it has usable credentials,
+   optionally scans local logs and prices tokens through `ModelPricingStore`, and maps the result to
+   a `ProviderSnapshot`.
    On success the store updates `ProviderSnapshotCache`; on failure it keeps the last good snapshot
    and shows the error.
 3. Rendering. `@Observable` stores drive `DashboardView` inside the panel and the menu bar strip
@@ -167,7 +178,8 @@ Credential sources and hosts as written in each provider folder under `Sources/O
 5. CLI. `openusage` finds its containing app's bundle id (or `OPENUSAGE_DEFAULTS_SUITE`), opens that
    defaults domain, and `UsageReader` prints JSON from `ProviderSnapshotCache`. It refreshes
    in-process through the same `ProviderCatalog` and `WidgetDataStore` when `--force` is passed or
-   a requested (or, with no argument, enabled) provider has no fresh entry. It never launches the GUI.
+   a requested (or, with no argument, enabled) provider has no fresh entry or an entry stamped with
+   a different account. It never launches the GUI.
 6. Telemetry, as it runs here. `TelemetryRecorder` still keeps its bookkeeping in the telemetry
    suite (the daily active day always, refresh outcome counters while the optional-analytics toggle
    is on, which is the default), but its `PostHogTelemetrySink` is unconfigured, so
@@ -175,9 +187,9 @@ Credential sources and hosts as written in each provider folder under `Sources/O
 
 ## 6. Divergence from upstream
 
-Upstream is [robinebers/openusage](https://github.com/robinebers/openusage). This repo is not a
-GitHub fork-network member; it was branched from upstream tag `v0.7.10` (commit `05c40a1`) and adds
-five commits. `git diff v0.7.10 no-telemetry` touches 44 files (511 insertions, 288 deletions), so
+Upstream is [robinebers/openusage](https://github.com/robinebers/openusage). GitHub does not list
+this repo as a fork (`gh repo view` returned no parent on 27 Sep 2026). It was branched from upstream
+tag `v0.7.10` (commit `05c40a1`) and adds five commits. `git diff v0.7.10 no-telemetry` touches 44 files (511 insertions, 288 deletions), so
 the divergence is wider than `Telemetry.swift`:
 
 | Change | Files |
@@ -185,7 +197,7 @@ the divergence is wider than `Telemetry.swift`:
 | Telemetry strip: no baked PostHog token, `OPENUSAGE_POSTHOG_TOKEN` override removed | `Sources/OpenUsage/Services/Telemetry.swift`; two new tests in `Tests/OpenUsageTests/TelemetrySinkTests.swift` |
 | Rebrand to UsageBar per upstream `TRADEMARK.md`: display strings, outbound `User-Agent: UsageBar` (Codex, Copilot org billing and Grok clients), unified-log subsystem, log path | 20 other files under `Sources/` (including `OpenUsageCLI.swift`); `Tests/OpenUsageTests/GrokProviderTests.swift` and `LogFileTests.swift` updated to match |
 | Build identity: app name `UsageBar`, bundle id `io.github.omar16100.usagebar`, iCloud container id | `script/build_and_run.sh` |
-| Upstream logo and screenshot removed | `assets/AppIcon.icon/`, `assets/AppIcon.prebuilt/`, `assets/screenshot.jpg` (deleted) |
+| App icon assets and screenshot removed | `assets/AppIcon.icon/`, `assets/AppIcon.prebuilt/`, `assets/screenshot.jpg` (deleted). The same gauge glyph as the deleted `AppIcon.icon/Assets/dashboard-3-line.svg` (identical path data) is still bundled as `Sources/OpenUsage/Resources/ProviderIcons/openusage.svg` and drawn by `MenuBarIcon`, the screen-share label in `MenuBarStripRenderer` and `ShareCardChrome` |
 | Dependabot config removed | `.github/dependabot.yml` (deleted) |
 | Fork docs | `README.md` replaced; `docs/fork-maintenance.md` and `docs/plans/` added; `docs/privacy.md` rewritten; `docs/README.md`, `debugging.md`, `icloud-sync.md`, `logging.md`, `settings.md`, `updates.md` and `research/account-first-plan.md` edited for the new name, log path or fork notices |
 
@@ -196,7 +208,8 @@ Sparkle are still linked), the `~/Library/Application Support/OpenUsage/`, `~/.o
 unbundled fallback defaults suite `com.robinebers.openusage` (`Sources/OpenUsageCLI/AppBundleLocator.swift`),
 the `NSUbiquitousContainers` key in the Info.plist that `script/build_and_run.sh` writes
 (`iCloud.com.robinebers.openusage.dev`), `script/release.sh`, and the seven workflows in
-`.github/workflows/`. GitHub Actions is disabled on this repo, so none of those workflows run.
+`.github/workflows/`. GitHub Actions is disabled on this repo (repo Actions permissions returned
+`enabled: false` on 27 Sep 2026), so none of those workflows run.
 
 ## Change log
 

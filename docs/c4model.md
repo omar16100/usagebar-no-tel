@@ -42,9 +42,9 @@ External systems the code calls, and where:
 | Provider usage APIs (per-provider hosts in section 4) | HTTPS to the default hosts via `URLSessionHTTPClient` (some hosts can be overridden by environment variables, see section 4); optional SOCKS5/HTTP(S) proxy read once from `~/.openusage/config.json` | `Sources/OpenUsage/Services/HTTPClient.swift`, `Sources/OpenUsage/Services/ProxyConfig.swift`, `Sources/OpenUsage/Providers/*/*UsageClient.swift` |
 | Local credentials | File reads; keychain via `/usr/bin/security` and the Security framework; SQLite via `/usr/bin/sqlite3`; environment variables, including ones captured from the user's login shell | `Sources/OpenUsage/Services/SystemClients.swift`, `Sources/OpenUsage/Services/LoginShellEnvironment.swift`, `Sources/OpenUsage/Providers/*/*AuthStore.swift` |
 | Local usage logs of coding agents | Incremental JSONL scans (Claude Code, Codex, Grok, pi); SQLite queries (OpenCode); conversation DB scan (Antigravity CLI) | `Sources/OpenUsage/Providers/IncrementalJSONLScanner.swift`, `Sources/OpenUsage/Providers/*/*Scanner.swift` |
-| Antigravity language server | Finds the running `language_server` or `agy` process with `/bin/ps` and `lsof`, then calls its Connect-RPC service on `127.0.0.1` with the CSRF token from the process arguments: HTTPS (self-signed) first, then HTTP on the same ports, then the HTTP extension port | `Sources/OpenUsage/Services/LanguageServerDiscovery.swift`, `Sources/OpenUsage/Providers/Antigravity/AntigravityUsageClient.swift` |
+| Antigravity language server | Finds the running `language_server` or `agy` process with `/bin/ps` and `lsof`, then calls its Connect-RPC service on `127.0.0.1`. For each listening port it tries HTTPS (self-signed) then HTTP, then the HTTP extension port if one was found. `language_server` is called with the `--csrf_token` value from its arguments; `agy` is probed with no CSRF flag | `Sources/OpenUsage/Services/LanguageServerDiscovery.swift`, `Sources/OpenUsage/Providers/Antigravity/AntigravityUsageClient.swift` |
 | Model pricing feeds | HTTPS fetch, started in the background by `ModelPricingStore.current()` when a source was last fetched more than an hour ago (30 minutes after a failure), of `raw.githubusercontent.com/BerriAI/litellm/.../model_prices_and_context_window.json`, `models.dev/api.json` and `robinebers.github.io/openusage/pricing_supplement.json`; bundled snapshots in `Sources/OpenUsage/Resources/` cover first launch and offline use | `Sources/OpenUsage/Pricing/ModelPricingStore.swift` |
-| iCloud private container | Opt-in "Sync Across Macs"; one coordinated history file per Mac. `script/build_and_run.sh` warns that sync is unavailable when no matching iCloud provisioning profile is installed, which is the case for the fork's default ad-hoc build | `Sources/OpenUsage/Stores/ICloudUsageSyncStore.swift` |
+| iCloud private container | Opt-in "Sync Across Macs"; one coordinated history file per Mac. `script/build_and_run.sh` warns that sync is unavailable when no matching iCloud provisioning profile is installed, as recorded for the fork's documented local build (`docs/plans/2026-09-01-1447_strip-posthog-telemetry-local-build.md`) | `Sources/OpenUsage/Stores/ICloudUsageSyncStore.swift` |
 | macOS services | `NSStatusItem` menu bar item, `UNUserNotificationCenter` quota alerts, `SMAppService` launch at login, a runtime-resolved window server symbol for screen-share detection | `Sources/OpenUsage/App/StatusItemController.swift`, `Sources/OpenUsage/Support/AppNotifications.swift`, `Sources/OpenUsage/Stores/LaunchAtLoginSetting.swift`, `Sources/OpenUsage/Services/ScreenCaptureProbe.swift` |
 
 Linked but not contacted by this fork's build:
@@ -92,7 +92,7 @@ App/
   `SettingsMigrator`, `LegacyLaunchAgentCleanup`, `AppearanceSetting.applyCurrent()`, then
   `AppContainer`, `StatusItemController` and `UpdaterController.start()`. It waits for the
   login-shell environment capture first only when there is neither a saved shell snapshot nor a
-  completed capture; otherwise `AppContainer` prewarms the capture in the background.
+  successful capture; otherwise `AppContainer` prewarms the capture in the background.
 - `AppContainer`: composition root. Builds providers from `ProviderCatalog`, the `WidgetRegistry`,
   every store, `CodexResetClaimService`, `TelemetryRecorder` and `LocalUsageServer`, and runs the
   periodic refresh loop.
@@ -116,9 +116,11 @@ Stores/
   `.backedOff`, `.failed`, `.skipped`), failure backoff, last-good snapshots.
 - `ProviderSnapshotCache`: snapshots persisted in `UserDefaults`. In the app, a snapshot counts as
   fresh only if it was written this session and is younger than `RefreshSetting.interval`
-  (5 minutes); snapshots loaded from disk at launch are shown but refreshed on the first pass. The
-  CLI opts into timestamp-only freshness (`allowsPersistedFreshness`). An entry stamped with a
-  different account identity is never treated as fresh.
+  (5 minutes); accepted snapshots loaded from disk at launch are shown until the first pass
+  refreshes them. The CLI opts into timestamp-only freshness (`allowsPersistedFreshness`). For a
+  card whose current account identity is known, an entry whose stamp is missing or names another
+  account (`hasStaleAccountStamp`) is neither shown at launch nor served as fresh, in the app or the
+  CLI; a card with an unresolved identity keeps its entry.
 - `LayoutStore`, `ProviderEnablementStore`, `NotificationSettingsStore`, `MenuBarPrivacyStore`,
   `PopoverNavigationStore` (screens: dashboard, customize, settings).
 - `ICloudUsageSyncStore`: opt-in history sync.
@@ -149,7 +151,7 @@ Credential sources and hosts as written in each provider folder under `Sources/O
 | Claude | `~/.claude/.credentials.json` or `$CLAUDE_CONFIG_DIR`; keychain `Claude Code-credentials` (suffixed variants for non-default homes or OAuth endpoints); `CLAUDE_CODE_OAUTH_TOKEN` (no live usage call with this token, local history only); Claude Desktop (keychain `Claude Safe Storage` plus files under `~/Library/Application Support/Claude/`) | Defaults `api.anthropic.com` and `platform.claude.com` (token refresh); `CLAUDE_CODE_CUSTOM_OAUTH_URL` and staging/local switches can override them (`ClaudeAuthStore.resolveOAuthEndpoints`) | JSONL under `~/.claude` and `$XDG_CONFIG_HOME/claude` (or `$CLAUDE_CONFIG_DIR`), Cowork sessions under `~/Library/Application Support/Claude/local-agent-mode-sessions`, plus pi sessions |
 | Codex | `auth.json` in `$CODEX_HOME`, `~/.config/codex` or `~/.codex`; keychain `Codex Auth` | `chatgpt.com/backend-api/wham/...`, `auth.openai.com` (token refresh) | `sessions/` and `archived_sessions/` JSONL under `$CODEX_HOME` or `~/.codex`, plus pi sessions |
 | Cursor | Cursor's `state.vscdb` (via sqlite3); keychain `cursor-access-token`, `cursor-refresh-token` | `api2.cursor.sh`, `cursor.com/api/...` (includes the usage CSV export) | none on disk |
-| Antigravity | Local language server: CSRF token from the running process's arguments. Cloud fallback: keychain `gemini` (account `antigravity`) plus own token cache under Application Support | Local language server first; then `daily-cloudcode-pa.googleapis.com`, `cloudcode-pa.googleapis.com`, `oauth2.googleapis.com` | `~/.gemini/antigravity-cli/conversations` |
+| Antigravity | Local language server: `--csrf_token` from the running `language_server` process's arguments (none for `agy`). Cloud fallback: keychain `gemini` (account `antigravity`) plus own token cache under Application Support | Local language server first; then `daily-cloudcode-pa.googleapis.com`, `cloudcode-pa.googleapis.com`, `oauth2.googleapis.com` | `~/.gemini/antigravity-cli/conversations` |
 | Copilot | `~/.config/github-copilot/apps.json` and `hosts.json`, `~/.config/gh/hosts.yml`, keychain `gh:github.com` | `api.github.com` | none |
 | Devin | `~/.local/share/devin/credentials.toml`, Devin's `state.vscdb` | `server.codeium.com` by default | none |
 | Grok | `~/.grok/auth.json` | `cli-chat-proxy.grok.com`, `auth.x.ai` | JSONL under `$GROK_HOME` or `~/.grok` |
@@ -165,8 +167,8 @@ Credential sources and hosts as written in each provider folder under `Sources/O
 2. One provider refresh. Unless forced, `WidgetDataStore.refresh` serves a fresh cached snapshot
    (`.cacheHit`) and skips a provider still in failure backoff (`.backedOff`); a forced refresh
    bypasses both. Otherwise the provider's `refresh()` loads credentials off the main actor
-   (`loadOffMainActor`), calls its API through `HTTPClient` when it has usable credentials,
-   optionally scans local logs and prices tokens through `ModelPricingStore`, and maps the result to
+   (`loadOffMainActor`), may call its API through `HTTPClient` (subject to what the credentials
+   allow and provider-specific rules such as Claude's rate-limit cooldown), optionally scans local logs and prices tokens through `ModelPricingStore`, and maps the result to
    a `ProviderSnapshot`.
    On success the store updates `ProviderSnapshotCache`; on failure it keeps the last good snapshot
    and shows the error.

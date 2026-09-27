@@ -16,8 +16,8 @@ Status: current. Last updated 27 Sep 2026.
   do not rewrite it. If the facts change, add a new plan and link it.
 - Provider pages live in `docs/providers/<provider>.md`; research notes in `docs/research/`.
 - Most pages were inherited from upstream and still say "OpenUsage". Pages about features the fork's
-  default build lacks (updates; iCloud sync, which needs a matching provisioning profile) carry a
-  fork notice at the top.
+  documented local build lacks (updates; iCloud sync, which needs a matching provisioning profile)
+  carry a fork notice at the top.
 - [c4model.md](c4model.md) is the architecture source of truth. Read it before an architecture
   change and update it for every change to containers, components, external systems or data flows.
 - Register every new top-level doc in the table below.

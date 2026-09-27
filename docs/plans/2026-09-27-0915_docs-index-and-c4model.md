@@ -37,3 +37,6 @@ the inherited upstream prose).
   HTTP fallbacks, on-demand pricing revalidation, Claude env-token and Cowork history, Claude host
   overrides, `$XDG_DATA_HOME/opencode`, iCloud availability depending on a provisioning profile,
   conditional login-shell wait at launch, and a dated source for the fork-network and Actions claims.
+- 27 Sep 2026: codex review round 2 (no blockers, no majors, 5 minor) applied: account-stamp rules
+  for cached snapshots, Antigravity per-port probe order and `agy` having no CSRF flag, "may call its
+  API" wording, iCloud availability tied to the documented local build, "successful capture".

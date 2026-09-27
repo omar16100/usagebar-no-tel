@@ -9,7 +9,8 @@ Status: current. Last updated 27 Sep 2026.
 ## Conventions
 
 - Evergreen docs (describe behavior or architecture that changes with the code): `topic.md` in
-  lowercase kebab-case, for example `fork-maintenance.md`. Keep them current.
+  lowercase kebab-case, for example `fork-maintenance.md` (the inherited `README.md` hub is the one
+  exception). Keep them current.
 - Plans (a dated piece of work): `docs/plans/YYYY-MM-DD-HHMM_topic.md`, registered newest first in
   [plans/index.md](plans/index.md). Keep a plan updated while its work is in progress; after that,
   do not rewrite it. If the facts change, add a new plan and link it.

@@ -77,6 +77,9 @@ leaked secret.
 - [Privacy & usage data](docs/privacy.md), what is not sent and how to verify it
 - [Maintaining this fork](docs/fork-maintenance.md), rebasing onto a newer upstream tag and what to
   re-check afterwards
+- [C4 model](docs/c4model.md), the architecture source of truth written from the Swift source,
+  including the exact divergence from upstream
+- [Docs index](docs/index.md), naming conventions and the fork's own docs
 - [docs/](docs/README.md) is inherited from upstream. Pages describing features this build does not
   have (updates, iCloud sync) carry a notice at the top
 

@@ -44,11 +44,17 @@ than `OpenUsage`, so provider APIs and the UI do not present this build as upstr
 Requires macOS 15 or later and a Swift 6.2 toolchain (Xcode 26 or later).
 
 ```sh
-swift test                    # 1227 tests, 3 skipped, 1 known failure (see below)
+swift test                    # 1 known failure (see below)
 script/build_and_run.sh run   # stages dist/UsageBar.app and launches it
 ```
 
-`swift test` reports one failure,
+This fork does not run CI. Last local run: `swift test` on 27 Sep 2026 at commit `6ba0f35`
+(macOS 26.3, Xcode 26.5, Swift 6.3.2, outbound IP connections blocked except localhost) printed
+`Executed 1227 tests, with 3 tests skipped and 1 failure (0 unexpected)` for XCTest, plus 3 Swift
+Testing tests passed. The three skips are opt-in checks against real local logs or a live Claude
+account (`OPENUSAGE_CLAUDE_PARITY`, `OPENUSAGE_CODEX_PARITY`, `OPENUSAGE_LIVE_CLAUDE`).
+
+The one failure is
 `CodexProviderTests.testNoUsageDataBadgeIsDroppedWhenLocalLogsHaveSpend`. It is pre-existing upstream
 at `v0.7.10`, not caused by anything in this fork. Anything above one failure means something here is
 broken.

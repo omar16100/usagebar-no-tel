@@ -33,3 +33,4 @@ Status: current. Last updated 27 Sep 2026.
 | [architecture.md](architecture.md) | Architecture | Upstream's prose architecture guide for the same code. | Inherited |
 | [plans/index.md](plans/index.md) | Plan register | All plans, newest first. | Fork doc |
 | [plans/2026-09-27-0915_docs-index-and-c4model.md](plans/2026-09-27-0915_docs-index-and-c4model.md) | Plan | Adding this index and the C4 model. | 27 Sep 2026 |
+| [plans/2026-09-27-1140_test-count-provenance.md](plans/2026-09-27-1140_test-count-provenance.md) | Plan | Reproducing the README test count and dating it. | 27 Sep 2026 |

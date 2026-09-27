@@ -62,7 +62,8 @@ lives in upstream's code.
 
 ## Known test failure
 
-`swift test` reports **1227 tests, 3 skipped, 1 failure**. The failure is
+`swift test` reports **1227 tests, 3 skipped, 1 failure** (XCTest, last run 27 Sep 2026 at
+`6ba0f35` on macOS 26.3 with Xcode 26.5; see the README Build section). The failure is
 `CodexProviderTests.testNoUsageDataBadgeIsDroppedWhenLocalLogsHaveSpend`, and it is **pre-existing
 upstream at v0.7.10**, not caused by anything here. Verify that claim after a rebase by stashing
 local changes and re-running that one test:

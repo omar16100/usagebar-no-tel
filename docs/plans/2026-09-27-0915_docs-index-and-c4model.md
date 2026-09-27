@@ -1,7 +1,7 @@
 # Add a docs index and a C4 model
 
 Date: 2026-09-27
-Status: In review
+Status: Merged (#3, `7b0bf69`)
 Repo: https://github.com/omar16100/usagebar-no-tel (branch `docs/index-and-c4model` into `no-telemetry`)
 
 ## Goal
@@ -40,3 +40,5 @@ the inherited upstream prose).
 - 27 Sep 2026: codex review round 2 (no blockers, no majors, 5 minor) applied: account-stamp rules
   for cached snapshots, Antigravity per-port probe order and `agy` having no CSRF flag, "may call its
   API" wording, iCloud availability tied to the documented local build, "successful capture".
+- 27 Sep 2026: squash-merged as #3 (`7b0bf69`). No workflow ran: GitHub Actions is disabled on this
+  repo.

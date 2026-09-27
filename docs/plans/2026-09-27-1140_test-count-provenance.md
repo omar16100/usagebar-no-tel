@@ -1,7 +1,7 @@
 # Give the README test count a date and a run behind it
 
 Date: 2026-09-27
-Status: In review (branch `docs/test-count-claim` into `no-telemetry`)
+Status: Merged (#5, `4d27a5b`), 27 Sep 2026
 Repo: https://github.com/omar16100/usagebar-no-tel
 
 ## Goal

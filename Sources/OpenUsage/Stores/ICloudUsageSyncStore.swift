@@ -51,16 +51,21 @@ actor ICloudUsageHistoryFileStore: UsageHistoryFileStoring {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let containerURL: @Sendable () -> URL?
+    private let privateContainerProvisioned: Bool
     private let driveRoot: URL
     private var loggedDirectory: URL?
 
     init(
+        privateContainerProvisioned: Bool = FileManager.default.fileExists(
+            atPath: Bundle.main.bundleURL.appendingPathComponent("Contents/embedded.provisionprofile").path
+        ),
         containerURL: @escaping @Sendable () -> URL? = {
             FileManager.default.url(forUbiquityContainerIdentifier: nil)
         },
         driveRoot: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
     ) {
+        self.privateContainerProvisioned = privateContainerProvisioned
         self.containerURL = containerURL
         self.driveRoot = driveRoot
         let encoder = JSONEncoder()
@@ -144,7 +149,9 @@ actor ICloudUsageHistoryFileStore: UsageHistoryFileStoring {
 
     private func historyDirectory(create: Bool) throws -> URL {
         let root: URL
-        if let container = containerURL() {
+        // An unsandboxed app can receive a local container URL even without permission to sync it.
+        // Only a provisioned build may select that location.
+        if privateContainerProvisioned, let container = containerURL() {
             root = container.appendingPathComponent("OpenUsage", isDirectory: true)
         } else {
             // Never create the iCloud Drive root: an ordinary local folder with this name would

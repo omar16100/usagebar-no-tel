@@ -39,12 +39,28 @@ final class ICloudUsageHistoryFileStoreTests: XCTestCase, @unchecked Sendable {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         let container = root.appendingPathComponent("container")
-        let store = ICloudUsageHistoryFileStore(containerURL: { container }, driveRoot: root)
+        let store = ICloudUsageHistoryFileStore(
+            privateContainerProvisioned: true, containerURL: { container }, driveRoot: root
+        )
         try await store.write(document("first"))
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: container.appendingPathComponent("OpenUsage/History/v1/first.json").path
         ))
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("UsageBar").path))
+    }
+
+    func testUnprovisionedBuildIgnoresContainerURLEvenWhenMacOSReturnsOne() async throws {
+        let drive = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: drive) }
+        let unusableContainer = drive.appendingPathComponent("unprovisioned-container")
+        let store = ICloudUsageHistoryFileStore(
+            privateContainerProvisioned: false, containerURL: { unusableContainer }, driveRoot: drive
+        )
+        try await store.write(document("first"))
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: drive.appendingPathComponent("UsageBar/History/v1/first.json").path
+        ))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: unusableContainer.path))
     }
 
     func testCorruptPeerDoesNotHideValidHistory() async throws {

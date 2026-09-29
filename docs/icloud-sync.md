@@ -1,17 +1,14 @@
 # iCloud Sync
 
-> **Unavailable in this fork.** iCloud sync needs a matching provisioning profile, and this build is
-> ad-hoc signed with no Apple Development identity, so `build_and_run.sh` reports "no matching
-> installed iCloud provisioning profile was found; iCloud Sync will be unavailable in this build".
-> The toggle is off by default and cannot be usefully enabled.
->
-> The rest of this page describes the official app, and is kept for reference.
+**Sync Across Macs** is off by default. In this fork, builds without a private iCloud provisioning
+profile use `iCloud Drive/UsageBar/History/v1`. Both Macs must have iCloud Drive enabled under the same
+Apple Account. No developer certificate or provisioning profile is needed for this folder.
+The summaries are ordinary files visible in Finder and Files; do not edit them while sync is enabled.
 
-**Sync Across Macs** is off by default. When it is on, each Mac writes one versioned OpenUsage history
-file to the app's private iCloud container and reads the files written by other Macs signed into the same
-iCloud account. A random device ID is kept in the login Keychain so the same Mac continues updating its
-existing file after app preferences are reset or the app is reinstalled. There is no folder picker,
-pairing code, or separate account.
+A provisioned build continues using its app-private container. Macs must use the same storage mode to
+exchange history. Each Mac writes a separate versioned file. A random device ID is kept in the login
+Keychain so the same Mac continues updating its existing file after app preferences are reset or the
+app is reinstalled. There is no pairing code or separate account.
 
 The file contains normalized daily tokens and spend, model totals, and unknown-model names for sources
 that are local to one Mac: Claude, Codex, Grok, and OpenCode. It also includes Claude account and
@@ -36,16 +33,17 @@ calendar window used by the local history scanners.
 
 This Mac updates its file after a five-minute refresh batch, a manual refresh, or a provider enablement
 change. iCloud delivery is eventually consistent, so another Mac can take longer than five minutes to
-receive it, especially while offline. Downloaded changes reload immediately when macOS reports them.
+receive it, especially while offline. Downloaded changes reload when macOS reports them, with an additional check every 30 seconds for
+regular iCloud Drive folders. Files stored only in iCloud are requested for download automatically.
 
 Settings lists each valid device file with the time that Mac generated it. To remove a Mac from the
 combined summary, turn sync off on that Mac; this deletes its file from iCloud. Turning sync off also
 stops that Mac from reading peers and immediately returns every surface there to local-only spend.
 Malformed files are ignored and reported in Settings and the app log.
 
-## Development and release setup
+## Optional private-container setup
 
-Apple requires the iCloud container assignment to be present in the provisioning profile embedded in
+For private-container storage, Apple requires the iCloud container assignment to be present in the provisioning profile embedded in
 the app. OpenUsage uses separate resources so development builds cannot write production history:
 
 - `com.robinebers.openusage.dev` uses `iCloud.com.robinebers.openusage.dev`.
@@ -84,6 +82,7 @@ else
 fi
 ```
 
-No file is expected when sync is off, the app is signed without the matching profile, or the first
-write has not completed. The Settings error and app log distinguish those cases; the spinner only
+No file is expected when sync is off, iCloud Drive is unavailable, or the first write has not
+completed. For unprovisioned fork builds, inspect `iCloud Drive/UsageBar/History/v1` instead of the
+private container. The Settings error and app log distinguish those cases; the spinner only
 appears while an iCloud read or write is actually in progress.

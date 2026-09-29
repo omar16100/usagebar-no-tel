@@ -46,12 +46,23 @@ enum ICloudUsageSyncError: Error, LocalizedError {
     }
 }
 
-/// Coordinated access to the app-private data area of OpenUsage's iCloud Documents container.
+/// Uses the private container when provisioned, or UsageBar's folder in iCloud Drive otherwise.
 actor ICloudUsageHistoryFileStore: UsageHistoryFileStoring {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    private let containerURL: @Sendable () -> URL?
+    private let driveRoot: URL
+    private var loggedDirectory: URL?
 
-    init() {
+    init(
+        containerURL: @escaping @Sendable () -> URL? = {
+            FileManager.default.url(forUbiquityContainerIdentifier: nil)
+        },
+        driveRoot: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
+    ) {
+        self.containerURL = containerURL
+        self.driveRoot = driveRoot
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -70,13 +81,33 @@ actor ICloudUsageHistoryFileStore: UsageHistoryFileStoring {
         let urls = try FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        ).filter { $0.pathExtension == "json" }
+            options: []
+        ).filter {
+            (!$0.lastPathComponent.hasPrefix(".") && $0.pathExtension == "json")
+                || Self.isDownloadPlaceholder($0)
+        }
 
         var documents: [UsageHistoryDocument] = []
         var errors: [String] = []
         for url in urls {
             do {
+                // Older iCloud Drive versions expose evicted documents as hidden .name.json.icloud
+                // files. Ask iCloud to materialize them, then pick them up on the next reload.
+                if Self.isDownloadPlaceholder(url) {
+                    let name = String(url.lastPathComponent.dropFirst().dropLast(".icloud".count))
+                    try FileManager.default.startDownloadingUbiquitousItem(
+                        at: directory.appendingPathComponent(name)
+                    )
+                    continue
+                }
+                let values = try url.resourceValues(forKeys: [
+                    .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey
+                ])
+                if values.isUbiquitousItem == true,
+                   values.ubiquitousItemDownloadingStatus != .current {
+                    try FileManager.default.startDownloadingUbiquitousItem(at: url)
+                    if values.ubiquitousItemDownloadingStatus == .notDownloaded { continue }
+                }
                 let data = try coordinatedRead(url)
                 let document = try decoder.decode(UsageHistoryDocument.self, from: data)
                 try document.validate()
@@ -112,17 +143,32 @@ actor ICloudUsageHistoryFileStore: UsageHistoryFileStoring {
     }
 
     private func historyDirectory(create: Bool) throws -> URL {
-        guard let container = FileManager.default.url(forUbiquityContainerIdentifier: nil) else {
-            throw ICloudUsageSyncError.unavailable
+        let root: URL
+        if let container = containerURL() {
+            root = container.appendingPathComponent("OpenUsage", isDirectory: true)
+        } else {
+            // Never create the iCloud Drive root: an ordinary local folder with this name would
+            // look like successful sync when iCloud Drive is disabled or unavailable.
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: driveRoot.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue else { throw ICloudUsageSyncError.unavailable }
+            root = driveRoot.appendingPathComponent("UsageBar", isDirectory: true)
         }
-        let directory = container
-            .appendingPathComponent("OpenUsage", isDirectory: true)
+        let directory = root
             .appendingPathComponent("History", isDirectory: true)
             .appendingPathComponent("v1", isDirectory: true)
         if create {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
+        if loggedDirectory != directory {
+            AppLog.info(.config, "iCloud history directory: \(directory.path)")
+            loggedDirectory = directory
+        }
         return directory
+    }
+
+    private static func isDownloadPlaceholder(_ url: URL) -> Bool {
+        url.lastPathComponent.hasPrefix(".") && url.lastPathComponent.hasSuffix(".json.icloud")
     }
 
     private func coordinatedRead(_ url: URL) throws -> Data {
@@ -159,7 +205,9 @@ final class ICloudUsageSyncStore {
     private let dataStore: WidgetDataStore
     private let writeDebounce: Duration
     private let observesMetadataChanges: Bool
+    private let reloadInterval: Duration
     private var writeTask: Task<Void, Never>?
+    private var reloadTask: Task<Void, Never>?
     private var metadataQuery: NSMetadataQuery?
     private var notificationTokens: [NSObjectProtocol] = []
     private var syncActivityCount = 0
@@ -185,13 +233,15 @@ final class ICloudUsageSyncStore {
         fileStore: any UsageHistoryFileStoring = ICloudUsageHistoryFileStore(),
         deviceIDStore: any ICloudDeviceIDStoring = KeychainICloudDeviceIDStore(),
         writeDebounce: Duration = .seconds(3),
-        observesMetadataChanges: Bool = true
+        observesMetadataChanges: Bool = true,
+        reloadInterval: Duration = .seconds(30)
     ) {
         self.dataStore = dataStore
         self.defaults = defaults
         self.fileStore = fileStore
         self.writeDebounce = writeDebounce
         self.observesMetadataChanges = observesMetadataChanges
+        self.reloadInterval = reloadInterval
         let identity = Self.resolveDeviceID(defaults: defaults, store: deviceIDStore)
         self.deviceID = identity.id
         self.identityError = identity.error
@@ -272,7 +322,12 @@ final class ICloudUsageSyncStore {
                 let result = try await fileStore.loadDocuments()
                 // A read that began while enabled must not restore peer state after sync was disabled.
                 guard enabled else { return }
-                documents = UsageHistoryDocument.newestByDevice(result.documents)
+                let loaded = UsageHistoryDocument.newestByDevice(result.documents)
+                if Set(loaded) != Set(documents) {
+                    let peers = loaded.filter { $0.deviceID != deviceID }.count
+                    AppLog.info(.config, "iCloud history loaded \(loaded.count) devices (\(peers) peers)")
+                }
+                documents = loaded
                 invalidFileMessages = result.invalidFileMessages
                 dataStore.setPeerHistoryDocuments(result.documents, ownDeviceID: deviceID)
                 operationError = result.invalidFileMessages.isEmpty
@@ -328,6 +383,19 @@ final class ICloudUsageSyncStore {
     }
 
     private func startObserving() {
+        // Metadata notifications for app-private containers do not reliably cover regular Drive
+        // folders. Poll as well, including when the first peer folder appears after enabling sync.
+        if reloadTask == nil {
+            let interval = reloadInterval
+            reloadTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: interval) }
+                    catch { return }
+                    guard !Task.isCancelled, let self, self.enabled else { return }
+                    await self.reload()
+                }
+            }
+        }
         guard observesMetadataChanges else { return }
         guard metadataQuery == nil else { return }
         let query = NSMetadataQuery()
@@ -351,6 +419,8 @@ final class ICloudUsageSyncStore {
     }
 
     private func stopObserving() {
+        reloadTask?.cancel()
+        reloadTask = nil
         metadataQuery?.stop()
         metadataQuery = nil
         for token in notificationTokens { NotificationCenter.default.removeObserver(token) }

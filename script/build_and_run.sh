@@ -148,12 +148,12 @@ cat >"$INFO_PLIST" <<PLIST
   <true/>
   <key>NSUbiquitousContainers</key>
   <dict>
-    <key>iCloud.com.robinebers.openusage.dev</key>
+    <key>$ICLOUD_CONTAINER_ID</key>
     <dict>
       <key>NSUbiquitousContainerIsDocumentScopePublic</key>
       <false/>
       <key>NSUbiquitousContainerName</key>
-      <string>OpenUsage</string>
+      <string>$APP_DISPLAY</string>
       <key>NSUbiquitousContainerSupportedFolderLevels</key>
       <string>None</string>
     </dict>
@@ -180,7 +180,7 @@ if [ -n "${ICLOUD_PROVISIONING_PROFILE:-}" ]; then
     "$ENTITLEMENTS" "$ICLOUD_PROVISIONING_PROFILE" "$SIGN_ENTITLEMENTS" \
     "$ICLOUD_CONTAINER_ID"
 else
-  echo "WARNING: no matching installed iCloud provisioning profile was found; iCloud Sync will be unavailable in this build." >&2
+  echo "==> no private iCloud profile; sync will use UsageBar's folder in iCloud Drive"
 fi
 
 # Pick a stable Apple Development identity so ad-hoc cdhash churn doesn't re-trigger

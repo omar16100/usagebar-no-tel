@@ -12,7 +12,9 @@ The fork carries these local changes:
 2. **The de-brand**, required by upstream's [TRADEMARK.md](../TRADEMARK.md). Display strings, the
    outbound `User-Agent`, the app name and bundle id, the log path, deleted icon assets, and the
    README.
-3. **Explicit Claude profile homes.** The `openusage.claude.configDirectories.v1` preference adds
+3. **iCloud Drive sync.** Unprovisioned builds use the regular `UsageBar/History/v1` Drive folder.
+   Keep coordinated access, peer polling, download handling, and account-aware aggregation.
+4. **Explicit Claude profile homes.** The `openusage.claude.configDirectories.v1` preference adds
    separate CLI profiles to upstream account discovery. Keep the profile binding when merging an
    account with Claude Swap; credentials and local logs must still resolve to the configured home.
 
@@ -58,14 +60,14 @@ lives in upstream's code.
 | Telemetry | None | The point of the fork |
 | App icon | None | Upstream's logo removed per their trademark policy |
 | Auto-update | None | No `SUFeedURL`, so Sparkle is inert. See [updates.md](updates.md) |
-| iCloud sync | Unavailable | Needs a provisioning profile this build has no identity for |
+| iCloud sync | iCloud Drive folder | Uses `UsageBar/History/v1` without a private-container profile |
 | Code signing | Ad-hoc | No Apple Development identity present. Set `CODESIGN_IDENTITY` to change |
 | CI | Actions disabled | Upstream's release automation does not apply to a personal fork |
 | Dependency updates | Manual | Dependabot config removed, so rebase to pick up security fixes |
 
 ## Test validation
 
-The v0.7.12 merge passes the full suite: 1,356 XCTest cases, 3 skipped, no failures, plus
+The v0.7.12 fork with iCloud Drive sync passes the full suite: 1,361 XCTest cases, 3 skipped, no failures, plus
 3 Swift Testing cases. The personal-profile tests also cover overlap with Claude Swap.
 
 Keep tests isolated from this Mac's live data. The empty-Claude-history fixtures explicitly exclude

@@ -1,6 +1,6 @@
 # Privacy & Usage Data
 
-**This fork sends nothing.** No analytics, no daily ping, no crash reports. There is no setting to
+**This fork sends no telemetry.** No analytics, no daily ping, no crash reports. There is no setting to
 change, because there is no transport to enable.
 
 That is the entire reason this fork exists. If you want the official app's behaviour, described at
@@ -76,7 +76,8 @@ things.
 Stripping telemetry does not make the app offline. It still talks to provider APIs to do its job:
 Anthropic, OpenAI/Codex, GitHub Copilot, Z.ai, Antigravity, OpenCode and so on, using whatever
 credentials you have locally. It also fetches model pricing. Those are the flows you should expect
-to see in check 3.
+to see in check 3. If you enable Sync Across Macs, normalized usage summaries also sync through your
+iCloud Drive. Credentials and raw logs are never included; see [icloud-sync.md](icloud-sync.md).
 
 ## One historical note
 

@@ -79,6 +79,6 @@ leaked secret.
 - [Maintaining this fork](docs/fork-maintenance.md), rebasing onto a newer upstream tag and what to
   re-check afterwards
 - [docs/](docs/README.md) is inherited from upstream. Pages describing features this build does not
-  have (updates, iCloud sync) carry a notice at the top
+  have (automatic updates) carry a notice at the top
 
 Design notes for both changes are in [docs/plans](docs/plans/index.md).

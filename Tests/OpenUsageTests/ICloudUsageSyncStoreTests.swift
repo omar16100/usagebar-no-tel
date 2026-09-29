@@ -36,6 +36,26 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
         XCTAssertEqual(writeCount, 2)
     }
 
+    func testPeerArrivalReloadsWithoutPrivateContainerMetadataNotifications() async throws {
+        let defaults = makeDefaults("drive-polling")
+        let fileStore = RecordingHistoryFileStore()
+        let sync = makeSync(defaults: defaults, fileStore: fileStore, reloadInterval: .milliseconds(20))
+        sync.enabled = true
+        try await waitUntil { sync.documents.count == 1 }
+
+        let peer = UsageHistoryDocument(
+            deviceID: "peer", deviceName: "Peer Mac", updatedAt: .now, providers: [:]
+        )
+        try await fileStore.write(peer)
+        try await waitUntil { sync.documents.contains { $0.deviceID == "peer" } }
+        XCTAssertNil(sync.serviceError)
+
+        sync.enabled = false
+        try await waitUntil { await fileStore.deletedDeviceIDs.contains(sync.deviceID) }
+        try await Task.sleep(for: .milliseconds(60))
+        XCTAssertTrue(sync.documents.isEmpty)
+    }
+
     func testDisableDeletesWriteThatWasAlreadyInFlight() async throws {
         let defaults = makeDefaults("disable-in-flight-write")
         let fileStore = RecordingHistoryFileStore()
@@ -156,7 +176,8 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
         defaults: UserDefaults,
         fileStore: RecordingHistoryFileStore,
         deviceIDStore: MemoryDeviceIDStore = MemoryDeviceIDStore(),
-        writeDebounce: Duration = .seconds(3)
+        writeDebounce: Duration = .seconds(3),
+        reloadInterval: Duration = .seconds(30)
     ) -> ICloudUsageSyncStore {
         let dataStore = WidgetDataStore(
             registry: WidgetRegistry(providers: [], descriptors: []),
@@ -170,7 +191,8 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             fileStore: fileStore,
             deviceIDStore: deviceIDStore,
             writeDebounce: writeDebounce,
-            observesMetadataChanges: false
+            observesMetadataChanges: false,
+            reloadInterval: reloadInterval
         )
     }
 

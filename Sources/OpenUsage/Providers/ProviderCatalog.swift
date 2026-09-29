@@ -22,7 +22,8 @@ enum ProviderCatalog {
                 let scanner = ClaudeLogUsageScanner(
                     environment: environment,
                     accountUUID: user, organizationUUID: card.organizationID,
-                    allowsUnattributedSessions: card.allowsUnattributedPiUsage
+                    allowsUnattributedSessions: card.allowsUnattributedPiUsage,
+                    additionalConfigDirectories: card.additionalLogDirectories
                 )
                 return ClaudeProvider(
                     provider: ClaudeProvider.makeProvider(
@@ -34,8 +35,10 @@ enum ProviderCatalog {
                         desktopOrganization: card.organizationID,
                         expectedIdentityKey: identity,
                         desktopOnly: card.usesDesktopCredentials,
+                        swapAccount: card.swapAccount,
                         preferOrganizationScopedDesktop: claudeCards.count > 1
-                            && !card.usesDesktopCredentials && card.configDirectory == nil
+                            && card.organizationID != nil && !card.usesDesktopCredentials
+                            && card.configDirectory == nil
                     ),
                     logUsageScanner: scanner,
                     allowsUnattributedPiUsage: card.allowsUnattributedPiUsage
@@ -49,6 +52,7 @@ enum ProviderCatalog {
             CopilotProvider(defaults: defaults),
             DevinProvider(),
             GrokProvider(),
+            OllamaProvider(),
             OpenCodeProvider(),
             OpenRouterProvider(),
             ZAIProvider()

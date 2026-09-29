@@ -150,4 +150,36 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         XCTAssertEqual(assembly.claudeCards.first?.configDirectory, "/Users/dev/.claude-personal")
         XCTAssertNil(store.defaultBadgeHolder(family: "claude"))
     }
+
+    func testSwapDiscoveryKeepsMatchingExplicitProfileCredentials() throws {
+        let home = URL(fileURLWithPath: "/Users/dev")
+        let profile = home.appendingPathComponent(".claude-personal").path
+        let user = "11111111-1111-1111-1111-111111111111"
+        let org = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        let files = FakeFiles([
+            profile + "/.claude.json": #"{"oauthAccount":{"accountUuid":"\#(user)","organizationUuid":"\#(org)"}}"#,
+            profile + "/.credentials.json": #"{"claudeAiOauth":{"accessToken":"personal-token","scopes":["user:profile"]}}"#,
+            home.path + "/.claude-swap-backup/sequence.json": #"{"accounts":{"1":{"email":"personal@example.com","uuid":"\#(user)","organizationUuid":"\#(org)"}}}"#
+        ])
+        let defaults = makeScratchDefaults()
+        let observer = DefaultAccountObserver(
+            environment: FakeEnvironment(), files: files, keychain: FakeKeychain(),
+            homeDirectory: { home }
+        )
+        let assembly = ProviderAccountAssembly.make(
+            observer: observer, accountsStore: ProviderAccountsStore(defaults: defaults), families: ["claude"],
+            claudeConfigDirectories: [profile]
+        )
+        XCTAssertEqual(assembly.claudeCards.count, 1)
+        let card = try XCTUnwrap(assembly.claudeCards.first)
+        XCTAssertEqual(card.configDirectory, profile)
+        XCTAssertNotNil(card.swapAccount)
+        let provider = try XCTUnwrap(ProviderCatalog.make(defaults: defaults, claudeCards: [card])
+            .compactMap { $0 as? ClaudeProvider }.first)
+        var auth = provider.authStore
+        auth.files = files
+        auth.keychain = FakeKeychain()
+        auth.desktop = ClaudeDesktopAuthStore(files: files, homeDirectory: { home })
+        XCTAssertEqual(auth.loadCredentialCandidates().map(\.oauth.accessToken), ["personal-token"])
+    }
 }

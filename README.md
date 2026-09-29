@@ -6,7 +6,7 @@ so that the app sends no telemetry.
 ## Not the official project
 
 This is a fork of [robinebers/openusage](https://github.com/robinebers/openusage), taken at tag
-`v0.7.10`. It is **not** OpenUsage, and it is **not** affiliated with, endorsed by, or an official
+`v0.7.12`. It is **not** OpenUsage, and it is **not** affiliated with, endorsed by, or an official
 part of OpenUsage or Robin Ebers.
 
 Per upstream's [TRADEMARK.md](TRADEMARK.md), this fork uses a different name, does not ship the
@@ -19,7 +19,7 @@ The code is MIT licensed. Copyright for the original work remains with Robin Ebe
 
 ## What is different from upstream
 
-One change, in `Sources/OpenUsage/Services/Telemetry.swift`: no PostHog project token is baked in,
+The privacy change, in `Sources/OpenUsage/Services/Telemetry.swift`: no PostHog project token is baked in,
 and the `OPENUSAGE_POSTHOG_TOKEN` environment override is removed.
 
 That is enough to silence everything, because `PostHogTelemetrySink.init` guards on the placeholder
@@ -39,19 +39,20 @@ the network. Design notes are in
 Also, in this fork the outbound `User-Agent` and the in-app display strings say `UsageBar` rather
 than `OpenUsage`, so provider APIs and the UI do not present this build as upstream's client.
 
+Additional Claude Code profile homes can be registered alongside upstream account discovery. Each
+profile keeps its own credentials and usage history; see [Claude profiles](docs/providers/claude.md).
+
 ## Build
 
 Requires macOS 15 or later and a Swift 6.2 toolchain (Xcode 26 or later).
 
 ```sh
-swift test                    # 1227 tests, 3 skipped, 1 known failure (see below)
+swift test                    # full regression suite
 script/build_and_run.sh run   # stages dist/UsageBar.app and launches it
 ```
 
-`swift test` reports one failure,
-`CodexProviderTests.testNoUsageDataBadgeIsDroppedWhenLocalLogsHaveSpend`. It is pre-existing upstream
-at `v0.7.10`, not caused by anything in this fork. Anything above one failure means something here is
-broken.
+The v0.7.12 merge passes the full suite. Local test fixes keep real Pi history out of
+empty-history fixtures and put the OpenCode fixture on the same local calendar day as its clock.
 
 There are no prebuilt binaries and no update feed. The build has no app icon, since upstream's was
 removed, and it is ad-hoc signed unless you set `CODESIGN_IDENTITY`, so macOS will ask permission

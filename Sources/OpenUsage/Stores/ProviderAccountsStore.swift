@@ -32,6 +32,7 @@ struct ProviderAccountSource: Codable, Equatable, Sendable {
         case defaultHome
         /// An explicitly configured additional Claude Code profile home.
         case configDirectory
+        case claudeSwap
     }
 
     var kind: Kind

@@ -401,6 +401,8 @@ final class ClaudeProviderTests: XCTestCase {
                     now: { now }
                 ),
                 logUsageScanner: ClaudeLogFixture.scanner(home: home),
+                // Keep real Pi history out of this empty-history fixture.
+                allowsUnattributedPiUsage: false,
                 now: { now },
                 pricing: { TestPricing.bundled }
             )
@@ -670,6 +672,8 @@ final class ClaudeProviderTests: XCTestCase {
                 ),
                 usageClient: ClaudeUsageClient(httpClient: FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data()))),
                 logUsageScanner: ClaudeLogFixture.scanner(home: nil),
+                // Keep real Pi history out of this empty-history fixture.
+                allowsUnattributedPiUsage: false,
                 pricing: { TestPricing.bundled }
             )
         }

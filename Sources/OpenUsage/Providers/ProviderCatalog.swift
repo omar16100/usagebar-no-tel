@@ -18,7 +18,9 @@ enum ProviderCatalog {
             providers = claudeCards.map { card in
                 let identity = claudeIdentityKeys[card.id] ?? card.identityKey
                 let user = identity.split(separator: "|").first.map(String.init)
+                let environment = ClaudeProfileEnvironment(configDirectory: card.configDirectory)
                 let scanner = ClaudeLogUsageScanner(
+                    environment: environment,
                     accountUUID: user, organizationUUID: card.organizationID,
                     allowsUnattributedSessions: card.allowsUnattributedPiUsage
                 )
@@ -28,10 +30,12 @@ enum ProviderCatalog {
                         displayName: claudeCards.count == 1 ? "Claude" : card.displayName
                     ),
                     authStore: ClaudeAuthStore(
+                        environment: environment,
                         desktopOrganization: card.organizationID,
                         expectedIdentityKey: identity,
                         desktopOnly: card.usesDesktopCredentials,
-                        preferOrganizationScopedDesktop: claudeCards.count > 1 && !card.usesDesktopCredentials
+                        preferOrganizationScopedDesktop: claudeCards.count > 1
+                            && !card.usesDesktopCredentials && card.configDirectory == nil
                     ),
                     logUsageScanner: scanner,
                     allowsUnattributedPiUsage: card.allowsUnattributedPiUsage
@@ -50,5 +54,16 @@ enum ProviderCatalog {
             ZAIProvider()
         ]
         return providers
+    }
+}
+
+/// Pin both credentials and logs to a card's profile without changing the process environment.
+struct ClaudeProfileEnvironment: EnvironmentReading {
+    var configDirectory: String?
+    var base: any EnvironmentReading = ProcessEnvironmentReader()
+
+    func value(for name: String) -> String? {
+        if name == "CLAUDE_CONFIG_DIR", let configDirectory { return configDirectory }
+        return base.value(for: name)
     }
 }

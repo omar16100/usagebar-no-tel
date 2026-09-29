@@ -5,6 +5,18 @@ Tracks your Claude subscription limits using the login you already have from Cla
 Each account and organization gets its own Claude card with separate limits and spending. Signing in to
 the same account and organization through both Claude Code and Claude Desktop still creates only one card.
 
+Additional Claude Code profiles can be registered in the macOS preference
+`openusage.claude.configDirectories.v1` as an array of profile directory paths. For example:
+
+```sh
+defaults write io.github.omar16100.usagebar openusage.claude.configDirectories.v1 -array "$HOME/.claude-personal"
+```
+
+Restart UsageBar after changing this list. Each profile must already be signed in and identify its
+account and organization. Its card reads that profile's Keychain login and local logs, with Desktop
+available as a fallback. Existing account cards keep their IDs and layout when a profile is added.
+The default Claude profile continues to follow `CLAUDE_CONFIG_DIR`.
+
 ## What it tracks
 
 | Metric | Meaning |

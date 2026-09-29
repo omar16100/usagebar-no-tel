@@ -7,16 +7,19 @@ struct ClaudeAccountCard: Equatable, Sendable {
     let displayName: String
     let usesDesktopCredentials: Bool
     let allowsUnattributedPiUsage: Bool
+    var configDirectory: String? = nil
 }
 
-/// The launch-time account pass: read which account is signed in at each family's default home,
+/// The launch-time account pass: read accounts at default homes, configured Claude profiles and Desktop,
 /// reconcile the account registry, and expose the per-card identity map that the snapshot cache's
 /// account stamp consumes. Runs once per launch (app) or per invocation (one-shot CLI); a mid-run
 /// swap is caught on the next launch.
 @MainActor
 struct ProviderAccountAssembly {
-    /// Card id → the account identity signed in there this launch. Phase 1 observes only default
-    /// homes, so the keys are the bare family ids; a family whose identity didn't resolve is absent.
+    static let claudeConfigDirectoriesKey = "openusage.claude.configDirectories.v1"
+
+    /// Card id → the account identity signed in there this launch. Accounts whose identity could
+    /// not be resolved are absent.
     let identityKeysByCard: [String: String]
     var claudeCards: [ClaudeAccountCard] = []
 
@@ -49,7 +52,8 @@ struct ProviderAccountAssembly {
         return make(
             observer: DefaultAccountObserver(),
             accountsStore: ProviderAccountsStore(defaults: defaults),
-            families: families
+            families: families,
+            claudeConfigDirectories: defaults.stringArray(forKey: claudeConfigDirectoriesKey) ?? []
         )
     }
 
@@ -69,6 +73,7 @@ struct ProviderAccountAssembly {
         observer: DefaultAccountObserver,
         accountsStore: ProviderAccountsStore,
         families: Set<String> = ProviderAccountID.families,
+        claudeConfigDirectories: [String] = [],
         desktop: ClaudeDesktopAuthStore? = nil,
         listDesktopOrganizationDirectories: @escaping @Sendable (URL) -> [String] = { root in
             let urls = (try? FileManager.default.contentsOfDirectory(
@@ -121,6 +126,40 @@ struct ProviderAccountAssembly {
             return ProviderAccountAssembly(identityKeysByCard: identityKeys)
         }
 
+        // Explicit profile homes can name accounts that Desktop no longer has signed in.
+        // Resolve identity from each profile before attaching its credentials or local logs.
+        var profileHomes: [String: String] = [:]
+        for directory in claudeConfigDirectories {
+            guard !directory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            switch observer.observeClaude(configDirectory: directory) {
+            case .resolved(let identity, let label, let anchor) where identity.contains("|"):
+                let source = ProviderAccountSource(
+                    kind: .configDirectory, anchor: anchor, holdsDefaultSource: false
+                )
+                if let index = observations.firstIndex(where: {
+                    $0.family == "claude" && $0.identityKey == identity
+                }) {
+                    if !observations[index].sources.contains(where: { $0.anchor == anchor }) {
+                        observations[index].sources.append(source)
+                    }
+                } else {
+                    let existingLabel = accountsStore.records.first {
+                        $0.family == "claude" && $0.identityKey == identity
+                    }?.label
+                    observations.append(.init(
+                        family: "claude", identityKey: identity, label: existingLabel ?? label, sources: [source]
+                    ))
+                }
+                if profileHomes[identity] == nil { profileHomes[identity] = anchor }
+            case .unresolved(let reason):
+                AppLog.warn(.config, "Claude profile \(directory) unresolved: \(reason)")
+            case .absent:
+                AppLog.warn(.config, "Claude profile \(directory) has no login")
+            case .resolved:
+                AppLog.warn(.config, "Claude profile \(directory) has no organization identity")
+            }
+        }
+
         let desktop = desktop ?? ClaudeDesktopAuthStore(
             files: observer.files, homeDirectory: observer.homeDirectory
         )
@@ -169,6 +208,24 @@ struct ProviderAccountAssembly {
             ))
             identityKeys.removeValue(forKey: "claude")
             identityKeys[record.id] = defaultIdentity
+        }
+        for observation in observations where observation.family == "claude"
+            && observation.identityKey != defaultClaudeIdentity
+        {
+            let identity = observation.identityKey
+            guard let home = profileHomes[identity],
+                  let organization = identity.split(separator: "|").last,
+                  let record = records.first(where: {
+                      $0.family == "claude" && $0.identityKey == identity && !$0.removedTombstone
+                  })
+            else { continue }
+            cards.append(ClaudeAccountCard(
+                id: record.id, identityKey: identity, organizationID: String(organization),
+                displayName: "Claude — \(organizationLabel(record.label) ?? "Organization")",
+                usesDesktopCredentials: false, allowsUnattributedPiUsage: allowsUnattributedPiUsage,
+                configDirectory: home
+            ))
+            identityKeys[record.id] = identity
         }
         for organization in desktopOrganizations where organization.identityKey != defaultClaudeIdentity {
             guard let record = records.first(where: {

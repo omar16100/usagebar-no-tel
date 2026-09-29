@@ -24,12 +24,14 @@ enum ProviderAccountID {
 
 /// One place an account is signed in. "Default" is a badge on a source (`holdsDefaultSource`), never
 /// a key: it marks who currently occupies the default home, and it never drives ids or sort order —
-/// a swap re-points source edges, cards don't move. Phase 1 only observes the default home; later
-/// phases add config dirs, cswap vault slots, Codex homes, and Desktop logins as more kinds.
+/// a swap re-points source edges, cards don't move. Additional Claude profiles have their own kind;
+/// Desktop sources retain the original defaultHome encoding without holding the default badge.
 struct ProviderAccountSource: Codable, Equatable, Sendable {
     enum Kind: String, Codable, Sendable {
         /// The provider's standard home for this machine (`~/.claude`, `~/.codex`, env override).
         case defaultHome
+        /// An explicitly configured additional Claude Code profile home.
+        case configDirectory
     }
 
     var kind: Kind

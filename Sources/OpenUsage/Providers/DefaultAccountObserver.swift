@@ -71,17 +71,18 @@ struct DefaultAccountObserver: Sendable {
 
     /// The default Claude home, mirroring `ClaudeAuthStore`'s resolution exactly (the observer must
     /// name the account whose credentials the provider actually refreshes with): `CLAUDE_CONFIG_DIR`
-    /// when exported, else `~/.claude`. A comma-separated list can't be assigned one identity.
-    func observeClaude() -> Outcome {
+    /// when exported, else `~/.claude`. An explicit profile directory overrides that default.
+    /// A comma-separated list can't be assigned one identity.
+    func observeClaude(configDirectory: String? = nil) -> Outcome {
         var configDir = "~/.claude"
-        if let raw = environment.value(for: "CLAUDE_CONFIG_DIR")?
+        if let raw = (configDirectory ?? environment.value(for: "CLAUDE_CONFIG_DIR"))?
             .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
             guard !raw.contains(",") else {
                 return .unresolved(reason: "CLAUDE_CONFIG_DIR is a comma-separated list")
             }
             configDir = raw
         }
-        let anchor = expandTilde(configDir)
+        let anchor = URL(fileURLWithPath: expandTilde(configDir)).standardizedFileURL.path
         // The identity file sits inside a custom config dir, but next to (not inside) the default
         // `~/.claude` — Claude Code keeps the default's state at `~/.claude.json`.
         let identityPath = anchor == expandTilde("~/.claude")

@@ -36,6 +36,49 @@ enum ClaudeUsageMapper {
         )
     }
 
+    /// The Rate Limit Resets row from the reset-grants request; `nil` when the account is outside the
+    /// program (no `cedar_ember` block).
+    static func mapResetGrantsResponse(_ response: HTTPResponse, now: Date = Date()) throws -> MetricLine? {
+        try mapResetGrantStatus(response)?.line(now: now)
+    }
+
+    static func mapResetGrantStatus(_ response: HTTPResponse) throws -> ClaudeResetGrantStatus? {
+        try ProviderAuthRetry.requireSuccess(
+            response,
+            authExpired: ClaudeAuthError.tokenExpired,
+            requestFailed: { ClaudeUsageError.requestFailed($0) }
+        )
+        guard let body = ProviderParse.jsonObject(response.body) else {
+            throw ClaudeUsageError.invalidResponse
+        }
+        return ClaudeResetGrantStatus.parse(body["cedar_ember"])
+    }
+
+    /// A Rate Limit Resets line held between fetches, minus every reset whose deadline has passed. Other
+    /// lines pass through unchanged.
+    static func droppingElapsedResetGrants(_ line: MetricLine, now: Date) -> MetricLine {
+        guard case .values(let label, let values, let colorHex, let expiriesAt, let unknownModels, let breakdown) = line,
+              expiriesAt.contains(where: { $0 <= now })
+        else { return line }
+        let elapsed = expiriesAt.filter { $0 <= now }.count
+        let remaining = values.map { value in
+            var value = value
+            if value.kind == .count { value.number = max(0, value.number - Double(elapsed)) }
+            return value
+        }
+        return .values(
+            label: label, values: remaining, colorHex: colorHex,
+            expiriesAt: expiriesAt.filter { $0 > now },
+            unknownModels: unknownModels, modelBreakdown: breakdown
+        )
+    }
+
+    /// Labels of the lines `mapUsageResponse` produces from the live usage endpoint (everything else on a
+    /// Claude snapshot is recomputed locally or is a rate-limit notice).
+    static let liveLimitLabels: Set<String> = [
+        "Session", "Weekly", "Sonnet", "Fable", "Extra usage spent", "Rate Limit Resets"
+    ]
+
     /// Snapshot shown when the usage endpoint rate-limits us and there is no last-good usage to fall back
     /// on (e.g. the first fetch after launch): a status badge plus the staleness note, no live bars.
     static func rateLimitedUsage(credentials: ClaudeOAuth, retryAfterSeconds: Int?) -> ClaudeMappedUsage {
@@ -188,7 +231,7 @@ enum ClaudeUsageMapper {
         }
     }
 
-    private static func resetDate(_ value: Any?) -> Date? {
+    static func resetDate(_ value: Any?) -> Date? {
         if let text = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
            !text.isEmpty,
            let date = OpenUsageISO8601.date(from: text) {

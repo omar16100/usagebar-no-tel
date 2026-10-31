@@ -36,14 +36,22 @@ protocol ProviderRuntime: AnyObject {
     /// `FirstRunSeeder` to enable exactly the providers the user actually has. Mirror the credential
     /// sources `refresh()` reads, and run blocking loads via `loadOffMainActor`.
     func hasLocalCredentials() async -> Bool
+
+    /// Hands the provider the snapshot painted from the launch cache, called once at launch and only
+    /// when the entry's account stamp matched the card's known identity. Providers whose in-memory
+    /// fallback state doesn't survive a relaunch can hold it for their first degraded refresh.
+    func adoptLaunchSnapshot(_ snapshot: ProviderSnapshot)
+}
+
+extension ProviderRuntime {
+    func adoptLaunchSnapshot(_ snapshot: ProviderSnapshot) {}
 }
 
 /// Run a blocking, `Sendable` credential load off the MainActor.
 ///
-/// Auth stores read credentials via the `security` (keychain) and `sqlite3` CLIs, whose `ProcessRunner`
-/// waits block the calling thread for up to ~5s each. Those loads run at the top of a provider's
-/// `@MainActor refresh()`, so calling them inline freezes the popover and the periodic-refresh loop for
-/// the whole subprocess window (Cursor issues several reads per refresh — up to ~25s). Offloading to a
+/// Credential loads block the calling thread: a `sqlite3` read for up to ~5s, and a Keychain read for as
+/// long as its popup waits for the user. Those loads run at the top of a provider's `@MainActor refresh()`,
+/// so calling them inline would freeze the popover and the periodic-refresh loop. Offloading to a
 /// detached task moves the wait onto a background executor; the `Sendable` result crosses back cleanly.
 /// It is awaited immediately, so it reads like a normal call while no longer blocking the actor.
 func loadOffMainActor<T: Sendable>(_ load: @escaping @Sendable () -> T) async -> T {

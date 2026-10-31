@@ -1,16 +1,4 @@
 import Foundation
-import SwiftUI
-
-/// The outcome of a reset-credit claim, as the resets popover renders it — the consume endpoint's four
-/// `code` values collapsed to what the user needs to know (`reset` and `already_redeemed` are both
-/// "claimed": the latter is the idempotency key doing its job on a retry), plus a transport/HTTP
-/// `.failed`.
-enum ResetClaimOutcome: Equatable, Sendable {
-    case success
-    case nothingToReset
-    case noCredit
-    case failed
-}
 
 /// Claims a Codex rate-limit reset credit — the app's only provider-API write, so it is deliberately
 /// narrow: one credit per call, always by explicit credit id, guarded by the caller's idempotency key.
@@ -24,7 +12,7 @@ enum ResetClaimOutcome: Equatable, Sendable {
 /// forced Codex refresh before returning, so by the time the popover shows its result banner the
 /// Session/Weekly meters and the credit count already tell the post-reset story.
 @MainActor
-final class CodexResetClaimService {
+final class CodexResetClaimService: ResetClaimService {
     typealias Credentials = (accessToken: String, accountID: String?)
 
     private let usageClient: CodexUsageClient
@@ -243,18 +231,5 @@ final class CodexResetClaimService {
             return Date(timeIntervalSince1970: seconds)
         }
         return nil
-    }
-}
-
-/// Hands the claim service to the resets popover through the environment: `nil` (the default — previews,
-/// share-card renders, reorder previews) renders the timeline read-only with no "Use" affordance.
-private struct CodexResetClaimServiceKey: EnvironmentKey {
-    static let defaultValue: CodexResetClaimService? = nil
-}
-
-extension EnvironmentValues {
-    var codexResetClaim: CodexResetClaimService? {
-        get { self[CodexResetClaimServiceKey.self] }
-        set { self[CodexResetClaimServiceKey.self] = newValue }
     }
 }

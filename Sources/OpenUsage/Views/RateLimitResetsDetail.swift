@@ -1,16 +1,16 @@
 import SwiftUI
 
-/// Hover detail for the Codex rate-limit-resets row: a vertical timeline of each still-available reset
-/// credit, one node per credit, ordered soonest-expiry first. Each node is a single line — a numbered,
-/// severity-colored dot (the number IS the reset number; blue > 7 days, yellow within a week, red
+/// Hover detail for a rate-limit-resets row (Codex reset credits, Claude reset grants): a vertical
+/// timeline of each still-available reset, one node per credit, ordered soonest-expiry first. Each
+/// node is a single line — a numbered, severity-colored dot (the number IS the reset number; blue > 7 days, yellow within a week, red
 /// within 48 hours — the same `expirySeverity` bands as the row's status dot), the exact expiry time,
 /// and the countdown to it on the trailing edge. Replaces the old `HoverTooltip` list. When no credits
 /// are available it shows a centered empty state. Mirrors `ModelUsageDetail` / `UsageTrendDetail`'s
 /// calm, presented via `.popover` — but deliberately without their title header (an owner call: the
 /// timeline is self-explanatory and the header cost a full row of the small popover).
 ///
-/// When a `claim` closure is supplied (the Codex resets row), each node also becomes claimable: hovering
-/// a node reveals a "Use" affordance, clicking it expands that node in place into an inline confirm, and
+/// When a `claim` closure is supplied, each node also
+/// becomes claimable: hovering a node reveals a "Use" affordance, clicking it expands that node in place into an inline confirm, and
 /// confirming runs the claim and shows the outcome. `claim` is `nil` for any non-claimable row, which
 /// renders exactly the read-only timeline. Each credit's claim carries an idempotency key (a UUID minted
 /// the first time that credit enters confirm and reused for any retry), so a retried claim can never
@@ -29,12 +29,17 @@ struct RateLimitResetsDetail: View {
     /// Claims the reset credit expiring at the given instant, using the given idempotency key (see the
     /// type doc). `nil` makes the timeline read-only (no "Use" affordance).
     var claim: ((_ expiry: Date, _ redeemRequestID: String) async -> ResetClaimOutcome)?
+    /// The confirm card's explanation line; `nil` keeps the generic one.
+    var confirmDetail: String?
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
 
-    /// Which credits this popover has already claimed (keyed by expiry instant, which is unique per
-    /// credit), so a claimed node drops out of the timeline immediately without waiting for a refresh.
+    /// Which credits this popover has already claimed (keyed by expiry instant), so a claimed node drops
+    /// out of the timeline when the post-claim refresh hasn't landed yet. Fresh `expiries` replace it.
     @State private var claimedExpiries: Set<Date> = []
+    /// Bumped whenever `expiries` changes, so a claim can tell whether the refresh already reconciled
+    /// the timeline (then the provider's list is the truth, e.g. Claude spending a different grant).
+    @State private var expiriesVersion = 0
     /// The node currently in its inline confirm step, or being claimed, keyed by expiry instant.
     @State private var confirmingExpiry: Date?
     @State private var claimingExpiry: Date?
@@ -106,6 +111,8 @@ struct RateLimitResetsDetail: View {
         // (and release the pin) rather than stranding a pinned popover whose active node no longer
         // exists. An in-flight claim is left alone: its outcome handler owns the state.
         .onChange(of: expiries) { _, newValue in
+            expiriesVersion += 1
+            claimedExpiries = []
             if let confirming = confirmingExpiry, !newValue.contains(confirming) {
                 cancelConfirm()
             }
@@ -158,8 +165,9 @@ struct RateLimitResetsDetail: View {
         VStack(alignment: .leading, spacing: 0) {
             // Identity by expiry instant, not positional index: after a claim removes a node the others
             // renumber, and index identity would read as "every row replaced" instead of one row leaving
-            // — date identity lets the removal collapse while the survivors slide up.
-            ForEach(entries, id: \.date) { entry in
+            // — date identity lets the removal collapse while the survivors slide up. `key` adds an
+            // ordinal so several resets sharing one deadline (a Claude grant with 2 left) stay distinct.
+            ForEach(entries, id: \.key) { entry in
                 let isFirst = entry.id == 0
                 let isLast = entry.id == entries.count - 1
                 HStack(alignment: .top, spacing: 10) {
@@ -296,7 +304,7 @@ struct RateLimitResetsDetail: View {
             Text("Use this reset?")
                 .font(.system(size: density.supportingPointSize, weight: .medium))
                 .foregroundStyle(.primary)
-            Text("Immediately reset your usage limits. This can't be undone.")
+            Text(confirmDetail ?? "Immediately reset your usage limits. This can't be undone.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -387,28 +395,35 @@ struct RateLimitResetsDetail: View {
             confirmingExpiry = nil
             claimingExpiry = date
         }
+        let versionAtClaim = expiriesVersion
         Task {
             let outcome = await claim(date, redeemRequestID)
             withAnimation(Self.flowAnimation) {
                 claimingExpiry = nil
-                apply(outcome, for: date)
+                apply(outcome, for: date, refreshed: expiriesVersion != versionAtClaim)
             }
             onPinChange?(false)
         }
     }
 
-    private func apply(_ outcome: ResetClaimOutcome, for date: Date) {
+    private func apply(_ outcome: ResetClaimOutcome, for date: Date, refreshed: Bool) {
         switch outcome {
         case .success:
-            claimedExpiries.insert(date)
+            if !refreshed { claimedExpiries.insert(date) }
             nothingToReset = true
             banner = .init(text: "Reset claimed. Enjoy!", icon: "checkmark.circle.fill", tint: .green)
         case .nothingToReset:
             nothingToReset = true
             banner = .init(text: "Your usage doesn't need a reset yet", icon: "info.circle.fill", tint: .accentColor)
         case .noCredit:
-            claimedExpiries.insert(date)
+            if !refreshed { claimedExpiries.insert(date) }
             banner = .init(text: "That reset is no longer available", icon: "exclamationmark.triangle.fill", tint: .orange)
+        case .unconfirmed:
+            banner = .init(text: "Your reset may still be going through. Check again in a minute.", icon: "clock.fill", tint: .accentColor)
+        case .unavailableNow(let until):
+            let wait = until.flatMap { Formatters.whenLabel(at: $0, mode: .relative) }
+                .map { $0 == Formatters.imminent ? " Try again soon." : " Try again in \($0)." } ?? ""
+            banner = .init(text: "Resets can't be used right now.\(wait)", icon: "exclamationmark.triangle.fill", tint: .orange)
         case .failed:
             banner = .init(text: "Couldn't reset usage. Please try again.", icon: "xmark.circle.fill", tint: .red)
         }
@@ -445,9 +460,15 @@ struct RateLimitResetsDetail: View {
         let id: Int          // 0-based row index (soonest first)
         let number: Int      // 1-based reset number, shown inside the dot
         let date: Date       // the credit's expiry instant — identity for the claim flow
+        let key: Key         // view identity: the expiry plus its ordinal among equal expiries
         let severity: WidgetData.MeterSeverity
         let time: String       // exact expiry, e.g. "Jul 12 at 5:30 PM"; "Expiring soon" when imminent
         let countdown: String? // "12d 18h"; nil when imminent (no useful countdown to show)
+
+        struct Key: Hashable {
+            let date: Date
+            let ordinal: Int
+        }
 
         var accessibilityLabel: String {
             "Reset \(number), \(time)" + (countdown.map { ", expires in \($0)" } ?? "")
@@ -461,7 +482,10 @@ struct RateLimitResetsDetail: View {
     /// while `.absolute` only collapses once past-due — so both formats agree instead of the exact time
     /// printing a wall-clock while the countdown reads "soon".
     static func entries(from expiries: [Date], now: Date = Date()) -> [Entry] {
-        expiries.sorted().enumerated().map { index, date in
+        var seen: [Date: Int] = [:]
+        return expiries.sorted().enumerated().map { index, date in
+            let ordinal = seen[date, default: 0]
+            seen[date] = ordinal + 1
             let relative = Formatters.whenLabel(at: date, mode: .relative, now: now)
             let absolute = Formatters.whenLabel(at: date, mode: .absolute, now: now)
             let imminent = (relative == nil || relative == Formatters.imminent)
@@ -469,6 +493,7 @@ struct RateLimitResetsDetail: View {
                 id: index,
                 number: index + 1,
                 date: date,
+                key: Entry.Key(date: date, ordinal: ordinal),
                 severity: WidgetData.expirySeverity(secondsRemaining: date.timeIntervalSince(now)),
                 time: (imminent || absolute == nil) ? "Expiring soon" : absolute!,
                 countdown: imminent ? nil : relative

@@ -25,7 +25,7 @@ APP_DISPLAY="UsageBar"                  # user-facing app name (fork: not "OpenU
 BUNDLE_ID="${BUNDLE_ID:-io.github.omar16100.usagebar}"
 ICLOUD_CONTAINER_ID="iCloud.io.github.omar16100.usagebar"
 MIN_SYSTEM_VERSION="15.0"
-APP_VERSION="0.7.12"
+APP_VERSION="0.7.16"
 APP_BUILD="0.7.12"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

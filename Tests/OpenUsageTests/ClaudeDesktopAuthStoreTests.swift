@@ -54,7 +54,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         let httpClient = RoutingHTTPClient { request in
             XCTAssertEqual(request.headers["Authorization"], "Bearer desktop-token")
             // The live-plan profile lookup follows a successful usage fetch; only usage is under test here.
-            guard request.url.absoluteString.hasSuffix("/api/oauth/usage") else {
+            guard request.url.path.hasSuffix("/api/oauth/usage") else {
                 return HTTPResponse(statusCode: 404, headers: [:], body: Data())
             }
             return HTTPResponse(statusCode: 200, headers: [:], body: Data(
@@ -67,7 +67,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
 
         XCTAssertNil(badge(snapshot.lines, "Error"))
         XCTAssertNil(snapshot.warning)
-        XCTAssertEqual(httpClient.requests.filter { $0.url.path == "/api/oauth/usage" }.count, 1)
+        XCTAssertEqual(httpClient.requests.filter { $0.isClaudeUsagePoll }.count, 1)
         XCTAssertEqual(fixture.keyReader.calls, [false])
     }
 
@@ -116,7 +116,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testUnreadableClaudeEnvironmentSkipsDesktopDiscoveryWhileReconcilingCodex() throws {
+    func testUnreadableClaudeEnvironmentSkipsDesktopDiscoveryWhileReconcilingCodex() async throws {
         let fixture = try makeFixture(
             activeOrganization: organization,
             v2: [cacheKey(organization: organization): tokenEntry("desktop-token", expiresIn: 3_600)],
@@ -135,7 +135,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         let accountsStore = ProviderAccountsStore(defaults: defaults)
         let organizations = [organization]
 
-        let assembly = ProviderAccountAssembly.make(
+        let assembly = await ProviderAccountAssembly.make(
             observer: observer, accountsStore: accountsStore, families: ["codex"],
             desktop: fixture.store, listDesktopOrganizationDirectories: { _ in organizations }
         )
@@ -147,7 +147,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testOrganizationSwitchKeepsPersistedCardIDsAndDistinctScopedRuntimes() throws {
+    func testOrganizationSwitchKeepsPersistedCardIDsAndDistinctScopedRuntimes() async throws {
         let fixture = try makeFixture(
             activeOrganization: organization,
             v2: [
@@ -175,7 +175,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
             homeDirectory: { fixtureHome }
         )
         let organizations = [organization, otherOrganization]
-        let assembly = ProviderAccountAssembly.make(
+        let assembly = await ProviderAccountAssembly.make(
             observer: observer, accountsStore: ProviderAccountsStore(defaults: defaults), families: ["claude"],
             desktop: fixture.store, listDesktopOrganizationDirectories: { _ in organizations }
         )
@@ -192,7 +192,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         XCTAssertEqual(providers.map { $0.authStore.preferOrganizationScopedDesktop }, [true, false])
         XCTAssertFalse(providers.contains { $0.allowsUnattributedPiUsage })
 
-        let withoutDesktop = ProviderAccountAssembly.make(
+        let withoutDesktop = await ProviderAccountAssembly.make(
             observer: observer, accountsStore: ProviderAccountsStore(defaults: defaults), families: ["claude"],
             desktop: ClaudeDesktopAuthStore(files: FakeFiles(), homeDirectory: { fixtureHome })
         )
@@ -201,7 +201,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
 
         fixture.files.files["\(home.path)/.claude.json"] =
             #"{"oauthAccount":{"accountUuid":"\#(accountUUID)"}}"#
-        let legacy = ProviderAccountAssembly.make(
+        let legacy = await ProviderAccountAssembly.make(
             observer: observer, accountsStore: ProviderAccountsStore(defaults: defaults), families: ["claude"],
             desktop: fixture.store, listDesktopOrganizationDirectories: { _ in organizations }
         )
@@ -396,7 +396,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
             v2: [cacheKey(organization: organization): tokenEntry("desktop-token", expiresIn: 3_600)]
         )
         let httpClient = RoutingHTTPClient { request in
-            XCTAssertTrue(request.url.absoluteString.hasSuffix("/api/oauth/usage"))
+            XCTAssertTrue(request.url.path.hasSuffix("/api/oauth/usage"))
             return HTTPResponse(statusCode: 401, headers: [:], body: Data())
         }
         let provider = makeProvider(fixture, environment: [:], keychainJSON: nil, httpClient: httpClient)
@@ -443,7 +443,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         }
 
         XCTAssertNil(badge(snapshot.lines, "Error"))
-        let usageRequests = httpClient.requests.filter { $0.url.path == "/api/oauth/usage" }
+        let usageRequests = httpClient.requests.filter { $0.isClaudeUsagePoll }
         XCTAssertEqual(usageRequests.count, 2)
         XCTAssertTrue(usageRequests.last?.headers["Authorization"]?.contains("desktop-token") == true)
     }

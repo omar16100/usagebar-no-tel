@@ -58,7 +58,7 @@ All three alerts default off. The first time you turn one on, OpenUsage asks for
 | Setting | Options | What it does |
 |---|---|---|
 | Hide From Screen Share | On / Off | Off (default). On replaces the menu bar strip with the OpenUsage icon and wordmark while your screen is being shared or recorded, and restores your starred metrics the moment the capture ends. See [Menu bar](menu-bar.md#hiding-usage-while-screen-sharing). |
-| Help make UsageBar better by sharing anonymous usage analytics | On / Off | **Inert in this fork.** The toggle still stores a preference, but no telemetry transport is ever constructed, so nothing is sent either way and the inherited label overstates what it does. See [Privacy & Usage Data](privacy.md). |
+| Help Make UsageBar Better | On / Off | **Inert in this fork.** The toggle still stores a preference, but no telemetry transport is ever constructed, so nothing is sent either way and the inherited label overstates what it does. See [Privacy & Usage Data](privacy.md). |
 
 ## Advanced
 
@@ -82,7 +82,7 @@ developer builds do not show it.
 
 | Setting | Options | What it does |
 |---|---|---|
-| Update Automatically | On / Off | Whether Sparkle checks for updates in the background. You can still check manually when this is off. |
+| Check Automatically | On / Off | Whether Sparkle checks for updates in the background. You can still check manually when this is off. |
 | Beta Updates | On / Off | Adds pre-release builds to the updates you can receive. Stable releases remain available either way. |
 | Check for Updates… | button | Starts a manual update check and opens Sparkle's update window. |
 

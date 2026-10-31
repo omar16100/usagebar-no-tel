@@ -6,12 +6,27 @@ import Foundation
 /// define an ID (e.g. the test fixtures) silently ignore it. The provider-section order isn't seeded
 /// here: an empty saved order reconciles to plain registry order in `LayoutStore`.
 enum DefaultLayout {
+    /// Account cards inherit their family's existing defaults. Keep the migration baseline unexpanded
+    /// so a newly discovered card also receives its metrics on an existing installation.
+    static func expandingAccounts(_ metricIDs: [String], providerIDs: [String]) -> [String] {
+        metricIDs.flatMap { metricID -> [String] in
+            guard let separator = metricID.firstIndex(of: ".") else { return [metricID] }
+            let family = String(metricID[..<separator])
+            let suffix = metricID[separator...]
+            let additionalIDs = providerIDs.filter {
+                $0 != family && ProviderAccountID.family(of: $0) == family
+            }
+            return [metricID] + additionalIDs.map { "\($0)\(suffix)" }
+        }
+    }
+
     static let metricIDs: [String] = [
-        "antigravity.geminiPro", "antigravity.geminiWeekly", "antigravity.claude", "antigravity.claudeWeekly",
+        "antigravity.geminiPro", "antigravity.geminiWeekly", "antigravity.argonWeekly",
+        "antigravity.claude", "antigravity.claudeWeekly",
         "antigravity.trend", "antigravity.today", "antigravity.yesterday", "antigravity.last30",
 
         "claude.session", "claude.weekly", "claude.fable", "claude.trend",
-        "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
+        "claude.extra", "claude.rateLimitResets", "claude.today", "claude.yesterday", "claude.last30",
 
         "codex.session", "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
@@ -27,7 +42,7 @@ enum DefaultLayout {
         "grok.weekly", "grok.trend",
         "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30",
 
-        "ollama.session", "ollama.weekly", "ollama.last4Weeks",
+        "ollama.session", "ollama.weekly", "ollama.monthly", "ollama.purchasedCredits",
 
         "opencode.session", "opencode.weekly", "opencode.monthly", "opencode.trend",
         "opencode.today", "opencode.yesterday", "opencode.last30",
@@ -67,7 +82,9 @@ enum DefaultLayout {
         "codex.session", "codex.weekly",
         "cursor.auto", "cursor.api",
         "copilot.premium",
-        "ollama.session", "ollama.weekly",
+        // Ollama: Monthly is the current plans' meter. Legacy plans' Session and Weekly stay unpinned so
+        // they don't spend the two-star cap on rows a current plan never shows.
+        "ollama.monthly",
         "openrouter.credits",
         "zai.session", "zai.weekly"
     ]
@@ -78,13 +95,13 @@ enum DefaultLayout {
     /// Filtered to the active registry by `LayoutStore`, and only seeded on a genuinely fresh launch
     /// (existing layouts keep everything always-shown unless they reset customization).
     static let expandedMetricIDs: [String] = [
-        // Antigravity: the Gemini pool pair and usage trend stay above the fold; the non-Gemini
-        // pool pair and spend-history rows sit below the caret, matching the other local scanners.
+        // Antigravity: the Gemini pool pair, Argon Weekly, and usage trend stay above the fold;
+        // the non-Gemini pool pair and spend-history rows sit below the caret.
         "antigravity.claude", "antigravity.claudeWeekly",
         "antigravity.today", "antigravity.yesterday", "antigravity.last30",
         // Claude's core meters (Session, Weekly, Fable, Extra, Usage Trend) stay above the fold;
-        // optional Sonnet and spend-history rows sit below the caret.
-        "claude.sonnet", "claude.today", "claude.yesterday", "claude.last30",
+        // optional Sonnet, reset grants, and spend-history rows sit below the caret.
+        "claude.sonnet", "claude.rateLimitResets", "claude.today", "claude.yesterday", "claude.last30",
         // Codex's core Session/Weekly meters and Usage Trend stay above the fold; Spark (the optional
         // model-specific limits), credits, reset details, and spend rows sit below the caret.
         "codex.spark", "codex.sparkWeekly",
@@ -98,9 +115,8 @@ enum DefaultLayout {
         "copilot.orgCredits", "copilot.orgSpend", "copilot.chat", "copilot.completions",
         "devin.extra",
         "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30",
-        // Ollama: the Session and Weekly meters stay above the fold; the rolling four-week spend total
-        // (always $0.00 on a subscription, real only for pay-as-you-go) sits below the caret.
-        "ollama.last4Weeks",
+        // Ollama: the plan meters stay above the fold; purchased credits sit below the caret.
+        "ollama.purchasedCredits",
         // OpenCode: the three Go caps (Session/Weekly/Monthly) and Usage Trend stay above the fold —
         // matching every other provider — with the spend tiles (Today/Yesterday/Last 30 Days) below.
         "opencode.today", "opencode.yesterday", "opencode.last30",

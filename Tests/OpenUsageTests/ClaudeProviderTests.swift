@@ -336,7 +336,11 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertEqual(values(snapshot.lines, "Today"),
                        [MetricValue(number: 0.25, kind: .dollars, estimated: true),
                         MetricValue(number: 150, kind: .count, label: "tokens")])
-        XCTAssertTrue(httpClient.requests.contains { $0.url.absoluteString == "https://api.anthropic.com/api/oauth/usage" })
+        XCTAssertEqual(httpClient.requests.map(\.url.absoluteString), [
+            "https://api.anthropic.com/api/oauth/usage",
+            "https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1",
+            "https://api.anthropic.com/api/oauth/profile"
+        ])
     }
 
     func testNoCredentialsStillScansLocalSpendAndPreservesNotLoggedInWarning() async throws {
@@ -455,7 +459,7 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertNil(badge(snapshot.lines, "Error"))
         XCTAssertNil(snapshot.line(label: "Session"))
         // The usage endpoint was never called — that's the whole point of the scope gate.
-        XCTAssertFalse(httpClient.requests.contains { $0.url.absoluteString.hasSuffix("/api/oauth/usage") })
+        XCTAssertFalse(httpClient.requests.contains { $0.url.path.hasSuffix("/api/oauth/usage") })
         // Local spend tiles are unaffected and still load.
         XCTAssertNotNil(values(snapshot.lines, "Today"))
         XCTAssertEqual(snapshot.plan, "Max 5x")
@@ -499,7 +503,7 @@ final class ClaudeProviderTests: XCTestCase {
             "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"stale-token","refreshToken":"refresh-1","expiresAt":4102444800000,"subscriptionType":"pro","scopes":["user:profile"]}}"#
         ])
         let httpClient = RoutingHTTPClient { request in
-            if request.url.absoluteString.hasSuffix("/api/oauth/usage") {
+            if request.url.path.hasSuffix("/api/oauth/usage") {
                 let authorization = request.headers["Authorization"] ?? ""
                 guard authorization.contains("fresh-token") else {
                     return HTTPResponse(statusCode: 401, headers: [:], body: Data())
@@ -527,7 +531,7 @@ final class ClaudeProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertNotNil(snapshot.lines.first(where: { $0.label == "Session" }))
-        let usageCalls = httpClient.requests.filter { $0.url.absoluteString.hasSuffix("/api/oauth/usage") }
+        let usageCalls = httpClient.requests.filter { $0.isClaudeUsagePoll }
         XCTAssertEqual(usageCalls.count, 2)
         let saved = files.files["/tmp/claude/.credentials.json"] ?? ""
         XCTAssertTrue(saved.contains("fresh-token"))
@@ -552,7 +556,7 @@ final class ClaudeProviderTests: XCTestCase {
         keychain.currentUserValues[hashedService] = #"{"claudeAiOauth":{"accessToken":"stale-access","refreshToken":"stale-refresh","expiresAt":4102444800000,"subscriptionType":"max","scopes":["user:profile"]}}"#
 
         let httpClient = RoutingHTTPClient { request in
-            if request.url.absoluteString.hasSuffix("/api/oauth/usage") {
+            if request.url.path.hasSuffix("/api/oauth/usage") {
                 let authorization = request.headers["Authorization"] ?? ""
                 guard authorization.contains("fresh-access") else {
                     return HTTPResponse(statusCode: 401, headers: [:], body: Data())
@@ -626,7 +630,7 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertEqual(httpClient.requests.filter {
             $0.url.path == "/api/oauth/profile" && $0.headers["Authorization"] == "Bearer owned-token"
         }.count, 1)
-        XCTAssertEqual(httpClient.requests.filter { $0.url.path == "/api/oauth/usage" }.count, 2)
+        XCTAssertEqual(httpClient.requests.filter { $0.isClaudeUsagePoll }.count, 2)
     }
 
     func testSurfacesAuthErrorWhenAllCredentialSourcesAreExpired() async {
@@ -644,7 +648,7 @@ final class ClaudeProviderTests: XCTestCase {
 
         // Every usage call 401s and every refresh is revoked → both sources are dead.
         let httpClient = RoutingHTTPClient { request in
-            if request.url.absoluteString.hasSuffix("/api/oauth/usage") {
+            if request.url.path.hasSuffix("/api/oauth/usage") {
                 return HTTPResponse(statusCode: 401, headers: [:], body: Data())
             }
             return HTTPResponse(statusCode: 400, headers: [:], body: Data(#"{"error":"invalid_grant"}"#.utf8))
@@ -725,7 +729,7 @@ final class ClaudeProviderTests: XCTestCase {
         let clock = TestClock(t0)
         let usageCalls = CallCounter()
         let httpClient = RoutingHTTPClient { request in
-            guard request.url.absoluteString.hasSuffix("/api/oauth/usage") else {
+            guard request.url.path.hasSuffix("/api/oauth/usage") else {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data())
             }
             if usageCalls.next() == 1 {
@@ -766,7 +770,7 @@ final class ClaudeProviderTests: XCTestCase {
         let third = await provider.refresh()
         XCTAssertEqual(Self.progress(third.lines, "Session")?.used, 25)
         XCTAssertEqual(third.warning?.hasPrefix("Updates blocked by Anthropic"), true)
-        XCTAssertEqual(httpClient.requests.filter { $0.url.absoluteString.hasSuffix("/api/oauth/usage") }.count, 2)
+        XCTAssertEqual(httpClient.requests.filter { $0.isClaudeUsagePoll }.count, 2)
     }
 
     func testRefreshSurfacesRequestFailureForNonOAuthRefreshErrorBody() async {
@@ -778,7 +782,7 @@ final class ClaudeProviderTests: XCTestCase {
             "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"stale-token","refreshToken":"refresh-1","expiresAt":4102444800000,"subscriptionType":"pro","scopes":["user:profile"]}}"#
         ])
         let httpClient = RoutingHTTPClient { request in
-            if request.url.absoluteString.hasSuffix("/api/oauth/usage") {
+            if request.url.path.hasSuffix("/api/oauth/usage") {
                 return HTTPResponse(statusCode: 401, headers: [:], body: Data())
             }
             return HTTPResponse(statusCode: 400, headers: [:], body: Data("<html>Bad Gateway</html>".utf8))
@@ -850,7 +854,7 @@ private final class CallCounter: @unchecked Sendable {
 }
 
 /// A mutable clock so a test can advance `now` between refreshes to exercise time-based gates.
-private final class TestClock: @unchecked Sendable {
+final class TestClock: @unchecked Sendable {
     private let lock = NSLock()
     private var value: Date
     init(_ value: Date) { self.value = value }

@@ -62,7 +62,7 @@ Methods other than `GET`/`OPTIONS` return **405**; unknown routes return **404**
   "providers": {
     "codex": {
       "displayName": "Codex",
-      "plan": "Pro 20x",
+      "plan": "Pro 200",
       "fetchedAt": "2026-07-13T01:39:30.000Z",
       "expiresAt": "2026-07-13T01:44:30.000Z",
       "stale": false,
@@ -99,25 +99,30 @@ For bounded progress resources, `unit` follows the provider's live metric format
 `totalUsage` is `percent` on percentage-based plans, `requests` on request-based Enterprise plans, and
 `usd` when Cursor reports a dollar pool. Copilot `premiumCredits` is `percent` on paid plans and a
 `credits` count on org-managed seats that only report personal `credits_used`. OpenCode `session`,
-`weekly`, and `monthly` are `percent`.
+`weekly`, and `monthly` are `percent`. An untouched OpenCode `session` omits `resetsAt`; the field appears
+with the anchored reset instant after the first model call starts the rolling window, even while `used`
+is still 0 because OpenCode reports whole percentages.
 
 ### Public resources
 
 | Provider | Resource keys |
 | --- | --- |
-| Claude | `session`, `weekly`, `sonnet`, `fable`, `extraUsage` |
+| Claude | `session`, `weekly`, `sonnet`, `fable`, `extraUsage`, `rateLimitResets` |
 | Codex | `session`, `weekly`, `spark`, `sparkWeekly`, `credits`, `creditValue`, `rateLimitResets` |
 | Cursor | `totalUsage`, `grokBot`, `autoUsage`, `apiUsage`, `onDemand`, `requests`, `credits` |
-| Antigravity | `geminiSession`, `geminiWeekly`, `nonGeminiSession`, `nonGeminiWeekly` |
+| Antigravity | `geminiSession`, `geminiWeekly`, `argonWeekly`, `nonGeminiSession`, `nonGeminiWeekly` |
 | Copilot | `premiumCredits`, `extraUsage`, `orgCredits`, `orgSpend`, `chat`, `completions` |
 | Devin | `daily`, `weekly`, `extraUsageBalance` |
 | Grok | `weekly` |
+| Ollama | `session`, `weekly`, `monthly` |
 | OpenCode | `session`, `weekly`, `monthly` |
 | OpenRouter | `credits`, `balance`, `keyLimit` |
 | Z.ai | `session`, `weekly`, `webSearches` |
 
 Charts, colors, subtitles, formatted badges, layout state, and historical spend periods stay out of this
 contract. Codex's combined Credits UI row becomes two scalar resources: `credits` and `creditValue`.
+Antigravity's `argonWeekly` reports the separate Gemini 4 Argon weekly quota when the account exposes
+it. It is omitted when unavailable, including on older endpoints and accounts without that quota.
 
 ## Legacy usage response shape
 

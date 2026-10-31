@@ -3,7 +3,7 @@ import XCTest
 
 extension ClaudeDesktopAuthStoreTests {
     @MainActor
-    func testSwapDesktopOverlapKeepsTwoNamedIdentitiesAcrossDefaultSwitches() throws {
+    func testSwapDesktopOverlapKeepsTwoNamedIdentitiesAcrossDefaultSwitches() async throws {
         let fixture = try overlapFixture()
         let suite = "ClaudeOverlap.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -12,12 +12,12 @@ extension ClaudeDesktopAuthStoreTests {
         let fixtureHome = home
         let observer = DefaultAccountObserver(environment: FakeEnvironment([:]), files: fixture.files,
             keychain: FakeKeychain(), homeDirectory: { fixtureHome })
-        func discover() -> ProviderAccountAssembly {
-            ProviderAccountAssembly.make(observer: observer, accountsStore: accounts,
+        func discover() async -> ProviderAccountAssembly {
+            await ProviderAccountAssembly.make(observer: observer, accountsStore: accounts,
                 desktop: fixture.store, listDesktopOrganizationDirectories: { _ in [] })
         }
         setOverlapDefault(organization, files: fixture.files)
-        let first = discover()
+        let first = await discover()
         XCTAssertEqual(first.claudeCards.count, 2)
         XCTAssertEqual(Set(first.claudeCards.map(\.displayName)),
             ["Claude: Personal (same@example.com)", "Claude: Work (same@example.com)"])
@@ -35,10 +35,11 @@ extension ClaudeDesktopAuthStoreTests {
         XCTAssertTrue(savedPins.contains(pin))
         for selected in [otherOrganization, organization, otherOrganization] {
             setOverlapDefault(selected, files: fixture.files)
-            let next = discover()
+            let next = await discover()
             XCTAssertEqual(next.claudeCards.count, 2)
             XCTAssertEqual(Dictionary(uniqueKeysWithValues: next.claudeCards.map { ($0.identityKey, $0.id) }), firstIDs)
-            XCTAssertEqual(discover().claudeCards, next.claudeCards)
+            let repeated = await discover()
+            XCTAssertEqual(repeated.claudeCards, next.claudeCards)
             let restored = layout(next.claudeCards)
             XCTAssertEqual(restored.providerOrder, savedOrder)
             XCTAssertEqual(restored.pinnedMetricIDs, savedPins)
@@ -90,7 +91,7 @@ extension ClaudeDesktopAuthStoreTests {
                         logUsageScanner: ClaudeLogFixture.scanner(home: nil), pricing: { TestPricing.bundled })
                     let result = await provider.refresh()
                     XCTAssertNil(badge(result.lines, "Error"))
-                    XCTAssertEqual(http.requests.filter { $0.url.path == "/api/oauth/usage" }.count, 1)
+                    XCTAssertEqual(http.requests.filter { $0.isClaudeUsagePoll }.count, 1)
                 }
             }
         }
@@ -136,7 +137,7 @@ extension ClaudeDesktopAuthStoreTests {
             }
             XCTAssertEqual(used, Double(20 + index * 50))
             XCTAssertEqual(fixture.files.files[path], replacement)
-            XCTAssertEqual(http.requests.filter { $0.url.path == "/api/oauth/usage" }.count, 2)
+            XCTAssertEqual(http.requests.filter { $0.isClaudeUsagePoll }.count, 2)
         }
     }
 

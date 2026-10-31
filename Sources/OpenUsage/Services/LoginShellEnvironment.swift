@@ -49,6 +49,11 @@ final class LoginShellEnvironment: @unchecked Sendable {
         return capturedEnvironment()[name]?.nilIfEmpty
     }
 
+    /// The captured value when available, without spawning or waiting for the login shell.
+    func cachedValue(for name: String) -> String? {
+        cachedSnapshot()?[name]?.nilIfEmpty
+    }
+
     /// Spawn the capture eagerly off the main thread so the first provider refresh (and any UI read)
     /// finds the cache already warm and never blocks on the subprocess. Safe to call more than once.
     /// `.userInitiated`, not `.utility`: launch-time readers depend on this cache, and under
@@ -124,7 +129,7 @@ final class LoginShellEnvironment: @unchecked Sendable {
     /// and end markers and ignoring any shell banner printed outside them.
     static func parse(_ output: String) -> [String: String] {
         let tokens = output.components(separatedBy: "\0")
-        guard let begin = tokens.firstIndex(of: beginMarker) else { return [:] }
+        guard let begin = tokens.firstIndex(where: { $0.hasSuffix(beginMarker) }) else { return [:] }
         let end = tokens.firstIndex(of: endMarker) ?? tokens.count
         guard begin < end else { return [:] }
 

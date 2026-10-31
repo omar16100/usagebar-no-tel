@@ -51,8 +51,13 @@ swift test                    # full regression suite
 script/build_and_run.sh run   # stages dist/UsageBar.app and launches it
 ```
 
-The v0.7.12 merge passes the full suite. Local test fixes keep real Pi history out of
-empty-history fixtures and put the OpenCode fixture on the same local calendar day as its clock.
+This fork does not run CI. Last local run: `swift test` on 29 Sep 2026 at commit `f05e370`
+(v0.7.12 merge with iCloud Drive sync) printed 1,362 XCTest cases, 3 skipped, 0 failures, plus
+3 Swift Testing tests passed. The three skips are opt-in checks against real local logs or a live Claude
+account (`OPENUSAGE_CLAUDE_PARITY`, `OPENUSAGE_CODEX_PARITY`, `OPENUSAGE_LIVE_CLAUDE`).
+
+Local test fixes keep real Pi history out of empty-history fixtures and put the OpenCode fixture on
+the same local calendar day as its clock.
 
 There are no prebuilt binaries and no update feed. The build has no app icon, since upstream's was
 removed, and it is ad-hoc signed unless you set `CODESIGN_IDENTITY`, so macOS will ask permission
@@ -78,6 +83,9 @@ leaked secret.
 - [Privacy & usage data](docs/privacy.md), what is not sent and how to verify it
 - [Maintaining this fork](docs/fork-maintenance.md), rebasing onto a newer upstream tag and what to
   re-check afterwards
+- [C4 model](docs/c4model.md), the architecture source of truth written from the Swift source,
+  including the exact divergence from upstream
+- [Docs index](docs/index.md), naming conventions and the fork's own docs
 - [docs/](docs/README.md) is inherited from upstream. Pages describing features this build does not
   have (automatic updates) carry a notice at the top
 

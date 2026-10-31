@@ -68,7 +68,8 @@ lives in upstream's code.
 ## Test validation
 
 The v0.7.12 fork with iCloud Drive sync passes the full suite: 1,362 XCTest cases, 3 skipped, no failures, plus
-3 Swift Testing cases. The personal-profile tests also cover overlap with Claude Swap.
+3 Swift Testing cases (last run 29 Sep 2026 at `f05e370`; see the README Build section). The
+personal-profile tests also cover overlap with Claude Swap.
 
 Keep tests isolated from this Mac's live data. The empty-Claude-history fixtures explicitly exclude
 Pi history; the OpenCode integration fixture uses the same instant for its record and test clock so

@@ -1,5 +1,7 @@
 # Merge upstream v0.7.16 into the UsageBar fork: implementation plan
 
+**Status (1 Nov 2026):** Done on the laptop. Merge commit `a33dcbc`. `swift test`: 1,672 XCTest cases, 4 skipped, 0 failures; 3 Swift Testing tests passed. The app runs `0.7.16-dev`; the log shows `telemetry inert` and `iCloud history loaded 2 devices (1 peers)`. Added test `testProfileCardSurvivesDefaultLoginWithoutOrganization` for Review Focus item 4.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Move the `no-telemetry` branch from upstream `v0.7.12` to upstream `v0.7.16` and keep all fork behavior.
@@ -32,15 +34,15 @@
 
 ### Task 0: Safety copies
 
-- [ ] **Step 1:** Create branch `backup/pre-upstream-v0.7.16-20261101` at `f05e370`.
-- [ ] **Step 2:** Copy `dist/UsageBar.app` and `defaults export io.github.omar16100.usagebar` output to `/private/tmp/usagebar-v0716-backup-<HHMM>`. Verify that both exist.
+- [x] **Step 1:** Create branch `backup/pre-upstream-v0.7.16-20261101` at `f05e370`.
+- [x] **Step 2:** Copy `dist/UsageBar.app` and `defaults export io.github.omar16100.usagebar` output to `/private/tmp/usagebar-v0716-backup-<HHMM>`. Verify that both exist.
 
 ### Task 1: Merge `origin/no-telemetry`
 
 **Files:** `README.md`, `docs/fork-maintenance.md` (conflicts).
 
-- [ ] **Step 1:** `git merge origin/no-telemetry`. Keep both sides of the text. Keep the local "v0.7.12 with iCloud Drive sync" facts and the GitHub test-count provenance text.
-- [ ] **Step 2:** Commit the merge.
+- [x] **Step 1:** `git merge origin/no-telemetry`. Keep both sides of the text. Keep the local "v0.7.12 with iCloud Drive sync" facts and the GitHub test-count provenance text.
+- [x] **Step 2:** Commit the merge.
 
 ### Task 2: Merge `v0.7.16` and port the profile homes
 
@@ -55,41 +57,41 @@
 - Produces: parameter `claudeConfigDirectories: [String] = []` on `make(observer:accountsStore:families:...)` (after `families`), on `discover(...)` and on `readClaude(...)` (as `configDirectories`).
 - Consumes: `DefaultAccountObserver.observeClaude(configDirectory:)` (fork, auto-merged).
 
-- [ ] **Step 1:** `git merge --no-commit v0.7.16`.
-- [ ] **Step 2 (red):** Resolve the test file conflict. Keep all upstream tests and the 3 fork tests. Add `async throws` or `async` and `await` to each fork test call of `ProviderAccountAssembly.make`.
-- [ ] **Step 3:** Run `swift build --build-tests`. Expected: FAIL, "extra argument 'claudeConfigDirectories' in call".
-- [ ] **Step 4 (green):** Resolve `ProviderAccountAssembly.swift` to the upstream side. Then:
+- [x] **Step 1:** `git merge --no-commit v0.7.16`.
+- [x] **Step 2 (red):** Resolve the test file conflict. Keep all upstream tests and the 3 fork tests. Add `async throws` or `async` and `await` to each fork test call of `ProviderAccountAssembly.make`.
+- [x] **Step 3:** Run `swift build --build-tests`. Expected: FAIL, "extra argument 'claudeConfigDirectories' in call".
+- [x] **Step 4 (green):** Resolve `ProviderAccountAssembly.swift` to the upstream side. Then:
   - `make(defaults:waitsForLoginShell:)` passes `defaults.stringArray(forKey: claudeConfigDirectoriesKey) ?? []`.
   - `readClaude` observes each non-blank directory before its early return, and the early return also needs `profiles.isEmpty`.
   - `assemble` early return also needs `claudeReadout.profiles.isEmpty`. The profile loop (from `6308c9b`) reads `claudeReadout.profiles` instead of calling the observer.
   - Keep the card loop that sets `configDirectory`, and keep `configDirectory: existing.configDirectory` in the swap merge.
-- [ ] **Step 5:** Run `swift test --filter 'ProviderAccountAssemblyTests|ClaudeSwap|ClaudeDesktopAuthStoreTests'`. Expected: PASS.
+- [x] **Step 5:** Run `swift test --filter 'ProviderAccountAssemblyTests|ClaudeSwap|ClaudeDesktopAuthStoreTests'`. Expected: PASS.
 
 ### Task 3: Fork text, notice and other conflicts
 
 **Files:** `Sources/OpenUsage/Views/SettingsScreen.swift`, `Sources/OpenUsage/Views/DashboardContentView.swift`, `Sources/OpenUsage/Stores/OnboardingStore.swift`, `Sources/OpenUsage/Views/NewVersionNoticeCard.swift` (delete), `Tests/OpenUsageTests/NewVersionNoticeTests.swift` (delete), `Sources/OpenUsage/Views/HeaderView.swift`, `Sources/OpenUsage/App/FirstLaunchWindowController.swift`, `Sources/OpenUsage/Views/FirstLaunchWelcomeView.swift`, `script/build_and_run.sh`, `README.md`, `docs/privacy.md`, `docs/settings.md`, `docs/dashboard.md`.
 
-- [ ] **Step 1:** `SettingsScreen.swift`: use the upstream `row(...)` layout with the label `Help Make UsageBar Better`.
-- [ ] **Step 2:** Remove the notice: delete the card, its test, the dashboard branch and its animation line, the `OnboardingStore` key, property and method, and the `docs/dashboard.md` paragraph. Reason: the fork keeps spend and token history, so the notice is false here.
-- [ ] **Step 3:** Change `Welcome to OpenUsage` to `Welcome to UsageBar` (2 places).
-- [ ] **Step 4:** Change the `Report an Issue…` link to `https://github.com/omar16100/usagebar-no-tel/issues/new`.
-- [ ] **Step 5:** Set `APP_VERSION="0.7.16"` in `script/build_and_run.sh`.
-- [ ] **Step 6:** Docs: keep the fork text in `README.md` and `docs/privacy.md`. Merge the upstream settings facts into `docs/settings.md` with the fork labels.
-- [ ] **Step 7:** Verify: `git grep -n -E '"[^"]*OpenUsage[^"]*"' -- Sources/` shows only cache paths, bundle and module names. `git grep -n 'A New OpenUsage' -- Sources/` shows nothing.
+- [x] **Step 1:** `SettingsScreen.swift`: use the upstream `row(...)` layout with the label `Help Make UsageBar Better`.
+- [x] **Step 2:** Remove the notice: delete the card, its test, the dashboard branch and its animation line, the `OnboardingStore` key, property and method, and the `docs/dashboard.md` paragraph. Reason: the fork keeps spend and token history, so the notice is false here.
+- [x] **Step 3:** Change `Welcome to OpenUsage` to `Welcome to UsageBar` (2 places).
+- [x] **Step 4:** Change the `Report an Issue…` link to `https://github.com/omar16100/usagebar-no-tel/issues/new`.
+- [x] **Step 5:** Set `APP_VERSION="0.7.16"` in `script/build_and_run.sh`.
+- [x] **Step 6:** Docs: keep the fork text in `README.md` and `docs/privacy.md`. Merge the upstream settings facts into `docs/settings.md` with the fork labels.
+- [x] **Step 7:** Verify: `git grep -n -E '"[^"]*OpenUsage[^"]*"' -- Sources/` shows only cache paths, bundle and module names. `git grep -n 'A New OpenUsage' -- Sources/` shows nothing.
 
 ### Task 4: Verify the full merge and commit
 
-- [ ] **Step 1:** Re-read `Sources/OpenUsage/Services/Telemetry.swift`. Confirm the placeholder guard and the placeholder `bakedToken`.
-- [ ] **Step 2:** Run `swift test`. Expected: 0 failures. Record the counts.
-- [ ] **Step 3:** Commit the merge: `Merge upstream v0.7.16 while preserving UsageBar profiles and privacy`.
+- [x] **Step 1:** Re-read `Sources/OpenUsage/Services/Telemetry.swift`. Confirm the placeholder guard and the placeholder `bakedToken`.
+- [x] **Step 2:** Run `swift test`. Expected: 0 failures. Record the counts.
+- [x] **Step 3:** Commit the merge: `Merge upstream v0.7.16 while preserving UsageBar profiles and privacy`.
 
 ### Task 5: Install on the laptop and verify
 
-- [ ] **Step 1:** Run `script/build_and_run.sh run`.
-- [ ] **Step 2:** Verify in the log after the last `UsageBar v0.7.16-dev starting` line: `telemetry inert`, the two Claude cards, and `iCloud history loaded 2 devices (1 peers)`.
-- [ ] **Step 3:** Verify `strings -a` of the binary has no `phc_` and no `A New OpenUsage`.
-- [ ] **Step 4:** Verify `curl 127.0.0.1:6736/v1/usage/claude` returns `claude` and `claude@961ab622` with history.
-- [ ] **Step 5:** Update `docs/fork-maintenance.md` (base version, test counts) and this plan's status in `docs/plans/index.md`. Commit.
+- [x] **Step 1:** Run `script/build_and_run.sh run`.
+- [x] **Step 2:** Verify in the log after the last `UsageBar v0.7.16-dev starting` line: `telemetry inert`, the two Claude cards, and `iCloud history loaded 2 devices (1 peers)`.
+- [x] **Step 3:** Verify `strings -a` of the binary has no `phc_` and no `A New OpenUsage`.
+- [x] **Step 4:** Verify `curl 127.0.0.1:6736/v1/usage/claude` returns `claude` and `claude@961ab622` with history.
+- [x] **Step 5:** Update `docs/fork-maintenance.md` (base version, test counts) and this plan's status in `docs/plans/index.md`. Commit.
 
 ### Not in this plan
 

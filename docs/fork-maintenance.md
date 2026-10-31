@@ -1,6 +1,6 @@
 # Maintaining this fork
 
-This is a hand-maintained fork based on upstream `v0.7.12`. There is no CI, no Dependabot and no
+This is a hand-maintained fork based on upstream `v0.7.16`. There is no CI, no Dependabot and no
 update feed, so keeping it current is a manual job. This page is the runbook.
 
 ## What the fork actually changes
@@ -17,6 +17,10 @@ The fork carries these local changes:
 4. **Explicit Claude profile homes.** The `openusage.claude.configDirectories.v1` preference adds
    separate CLI profiles to upstream account discovery. Keep the profile binding when merging an
    account with Claude Swap; credentials and local logs must still resolve to the configured home.
+   Since v0.7.16, discovery reads each profile in the background readout
+   (`ProviderAccountDiscoveryReadout.Claude.profiles`).
+5. **No upstream new-version notice.** v0.7.16 added a dashboard card that says the next version
+   removes spend and token tracking. That is false for this fork, so the card is removed.
 
 ## Remotes
 
@@ -26,11 +30,20 @@ git remote -v
 # upstream  https://github.com/robinebers/openusage.git
 ```
 
+## Upstream main after v0.7.16
+
+Do not merge upstream `main` or a release after `v0.7.16`. Upstream commit `7129ab2` (28 Oct 2026)
+replaces the app with "OpenUsage Light". Light removes local log scans, spend and token history,
+iCloud sync, the CLI, the local HTTP API and the log file. This fork depends on all of these.
+
+To get a later upstream fix, use `git cherry-pick` and resolve it by hand. Examine each fix before
+you apply it, because upstream files can be absent here.
+
 ## Rebasing onto a newer upstream release
 
 ```sh
 git fetch upstream --tags
-git log --oneline v0.7.12..v<new>  -- Sources/OpenUsage/Services/Telemetry.swift
+git log --oneline v0.7.16..v<new>  -- Sources/OpenUsage/Services/Telemetry.swift
 git rebase v<new>
 swift test
 script/build_and_run.sh run
@@ -67,9 +80,9 @@ lives in upstream's code.
 
 ## Test validation
 
-The v0.7.12 fork with iCloud Drive sync passes the full suite: 1,362 XCTest cases, 3 skipped, no failures, plus
-3 Swift Testing cases (last run 29 Sep 2026 at `f05e370`; see the README Build section). The
-personal-profile tests also cover overlap with Claude Swap.
+The v0.7.16 fork passes the full suite: 1,672 XCTest cases, 4 skipped, no failures, plus 3 Swift
+Testing cases (last run 1 Nov 2026 at `a33dcbc`; see the README Build section). The
+personal-profile tests also cover overlap with Claude Swap and a default login with no organization.
 
 Keep tests isolated from this Mac's live data. The empty-Claude-history fixtures explicitly exclude
 Pi history; the OpenCode integration fixture uses the same instant for its record and test clock so

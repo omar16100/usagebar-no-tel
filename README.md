@@ -6,7 +6,7 @@ so that the app sends no telemetry.
 ## Not the official project
 
 This is a fork of [robinebers/openusage](https://github.com/robinebers/openusage), taken at tag
-`v0.7.12`. It is **not** OpenUsage, and it is **not** affiliated with, endorsed by, or an official
+`v0.7.16`. It is **not** OpenUsage, and it is **not** affiliated with, endorsed by, or an official
 part of OpenUsage or Robin Ebers.
 
 Per upstream's [TRADEMARK.md](TRADEMARK.md), this fork uses a different name, does not ship the
@@ -51,10 +51,11 @@ swift test                    # full regression suite
 script/build_and_run.sh run   # stages dist/UsageBar.app and launches it
 ```
 
-This fork does not run CI. Last local run: `swift test` on 29 Sep 2026 at commit `f05e370`
-(v0.7.12 merge with iCloud Drive sync) printed 1,362 XCTest cases, 3 skipped, 0 failures, plus
-3 Swift Testing tests passed. The three skips are opt-in checks against real local logs or a live Claude
-account (`OPENUSAGE_CLAUDE_PARITY`, `OPENUSAGE_CODEX_PARITY`, `OPENUSAGE_LIVE_CLAUDE`).
+This fork does not run CI. Last local run: `swift test` on 1 Nov 2026 at commit `a33dcbc`
+(v0.7.16 merge) printed 1,672 XCTest cases, 4 skipped, 0 failures, plus 3 Swift Testing tests
+passed. The four skips are opt-in checks against real local logs or a live Claude account
+(`OPENUSAGE_CLAUDE_PARITY`, `OPENUSAGE_CODEX_PARITY`, `OPENUSAGE_LIVE_CLAUDE`,
+`OPENUSAGE_LIVE_CLAUDE_CLAIM_DRYRUN`).
 
 Local test fixes keep real Pi history out of empty-history fixtures and put the OpenCode fixture on
 the same local calendar day as its clock.

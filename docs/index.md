@@ -1,10 +1,10 @@
 # Documentation index: UsageBar (usagebar-no-tel)
 
 UsageBar is an unofficial, no-telemetry fork of
-[robinebers/openusage](https://github.com/robinebers/openusage) taken at tag `v0.7.10`. Start with
+[robinebers/openusage](https://github.com/robinebers/openusage) taken at tag `v0.7.16`. Start with
 the [README](../README.md). This page indexes `docs/` and states how new docs are named.
 
-Status: current. Last updated 27 Sep 2026.
+Status: current. Last updated 1 Nov 2026.
 
 ## Conventions
 

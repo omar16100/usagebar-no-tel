@@ -5,8 +5,8 @@ update it (plus the change log at the bottom) for every change to containers, co
 systems or data flows. The inherited upstream guide, [architecture.md](architecture.md), still
 describes the same code under the name OpenUsage and is kept for reference.
 
-Status: current. Last updated 27 Sep 2026. Written from the Swift source on `no-telemetry` at commit
-`6fd60f9`. Every path below is relative to the repo root.
+Status: current. Last updated 1 Nov 2026. Written from the Swift source on `no-telemetry` at commit
+`6fd60f9`, then updated at `a9daaf2` (upstream `v0.7.16` base). Every path below is relative to the repo root.
 
 ## 1. System context
 
@@ -24,7 +24,7 @@ flowchart LR
     ls["Antigravity language server<br/>(local process, 127.0.0.1)"]
     providers["Provider usage APIs<br/>(Anthropic, OpenAI/ChatGPT, Cursor, Google Cloud Code,<br/>GitHub, Codeium, xAI Grok, OpenCode, OpenRouter, Z.ai)"]
     pricing["Model pricing feeds<br/>(LiteLLM, models.dev, upstream pricing supplement)"]
-    icloud["iCloud private container<br/>(opt-in; unavailable without a matching provisioning profile)"]
+    icloud["iCloud Drive folder UsageBar/History/v1<br/>(opt-in; private container only when provisioned)"]
 
     user -- "menu bar panel, settings" --> app
     scripts -- "openusage CLI / GET 127.0.0.1:6736" --> app
@@ -44,7 +44,7 @@ External systems the code calls, and where:
 | Local usage logs of coding agents | Incremental JSONL scans (Claude Code, Codex, Grok, pi); SQLite queries (OpenCode); conversation DB scan (Antigravity CLI) | `Sources/OpenUsage/Providers/IncrementalJSONLScanner.swift`, `Sources/OpenUsage/Providers/*/*Scanner.swift` |
 | Antigravity language server | Finds the running `language_server` or `agy` process with `/bin/ps` and `lsof`, then calls its Connect-RPC service on `127.0.0.1`. For each listening port it tries HTTPS (self-signed) then HTTP, then the HTTP extension port if one was found. `language_server` is called with the `--csrf_token` value from its arguments; `agy` is probed with no CSRF flag | `Sources/OpenUsage/Services/LanguageServerDiscovery.swift`, `Sources/OpenUsage/Providers/Antigravity/AntigravityUsageClient.swift` |
 | Model pricing feeds | HTTPS fetch, started in the background by `ModelPricingStore.current()` when a source was last fetched more than an hour ago (30 minutes after a failure), of `raw.githubusercontent.com/BerriAI/litellm/.../model_prices_and_context_window.json`, `models.dev/api.json` and `robinebers.github.io/openusage/pricing_supplement.json`; bundled snapshots in `Sources/OpenUsage/Resources/` cover first launch and offline use | `Sources/OpenUsage/Pricing/ModelPricingStore.swift` |
-| iCloud private container | Opt-in "Sync Across Macs"; one coordinated history file per Mac. `script/build_and_run.sh` warns that sync is unavailable when no matching iCloud provisioning profile is installed, as recorded for the fork's documented local build (`docs/plans/2026-09-01-1447_strip-posthog-telemetry-local-build.md`) | `Sources/OpenUsage/Stores/ICloudUsageSyncStore.swift` |
+| iCloud Drive | Opt-in "Sync Across Macs"; one coordinated history file per Mac. An unprovisioned build (the fork's local build) uses the ordinary iCloud Drive folder `~/Library/Mobile Documents/com~apple~CloudDocs/UsageBar/History/v1`. Only a build with `Contents/embedded.provisionprofile` selects the private container. See [icloud-sync.md](icloud-sync.md) | `Sources/OpenUsage/Stores/ICloudUsageSyncStore.swift` |
 | macOS services | `NSStatusItem` menu bar item, `UNUserNotificationCenter` quota alerts, `SMAppService` launch at login, a runtime-resolved window server symbol for screen-share detection | `Sources/OpenUsage/App/StatusItemController.swift`, `Sources/OpenUsage/Support/AppNotifications.swift`, `Sources/OpenUsage/Stores/LaunchAtLoginSetting.swift`, `Sources/OpenUsage/Services/ScreenCaptureProbe.swift` |
 
 Linked but not contacted by this fork's build:
@@ -103,13 +103,21 @@ App/
 Providers/
 - `ProviderRuntime`: protocol with `refresh()` (returns a `ProviderSnapshot`) and
   `hasLocalCredentials()` (local-only probe for first-run seeding).
-- `ProviderCatalog.make`: the installed set, in order: Claude (one card per account), Codex, Cursor,
-  Antigravity, Copilot, Devin, Grok, OpenCode, OpenRouter, Z.ai.
+- `ProviderCatalog.make`: the installed set, in order: Claude (one card per account), Codex (one card
+  per account), Cursor, Antigravity, Copilot, Devin, Grok, Ollama, OpenCode, OpenRouter, Z.ai.
 - One folder per provider, each with an auth store, a usage client and a mapper to `MetricLine`.
 - Shared: `IncrementalJSONLScanner` + `JSONLScanCacheStore` (cached JSONL parsing), `Pi/PiUsageScanner`
   (pi agent sessions attributed to Claude and Codex), `DefaultAccountObserver`, and
-  `Services/ProviderAccountAssembly` (multi-account Claude cards).
-- `Codex/CodexResetClaimService`: claims Codex rate-limit reset credits. The only provider-API write.
+  `Services/ProviderAccountAssembly` (multi-account Claude and Codex cards).
+- Account discovery runs off the main actor at launch: `ProviderAccountAssembly.discover` reads files
+  and the keychain into a `ProviderAccountDiscoveryReadout`, then `assemble` builds the cards on the
+  main actor. Explicit Claude profile homes from the preference `openusage.claude.configDirectories.v1`
+  are read there too (`ProviderAccountDiscoveryReadout.Claude.profiles`), and each such card pins its
+  credentials and logs to that home (`ClaudeProfileEnvironment` in `Providers/ProviderCatalog.swift`).
+- `Services/ResetClaimService`: claims one rate-limit reset from the resets popover. Implementations:
+  `Codex/CodexResetClaimService` and `Claude/ClaudeProvider+ResetClaim.swift`
+  (`POST api.anthropic.com/api/organizations/{org}/reset_rate_limits`). These are the only
+  provider-API writes, and each one runs only after the user confirms it.
 
 Stores/
 - `WidgetDataStore`: per-provider refresh returning a `RefreshOutcome` (`.refreshed`, `.cacheHit`,
@@ -123,7 +131,7 @@ Stores/
   CLI; a card with an unresolved identity keeps its entry.
 - `LayoutStore`, `ProviderEnablementStore`, `NotificationSettingsStore`, `MenuBarPrivacyStore`,
   `PopoverNavigationStore` (screens: dashboard, customize, settings).
-- `ICloudUsageSyncStore`: opt-in history sync.
+- `ICloudUsageSyncStore`: opt-in history sync through the iCloud Drive folder (section 1).
 - `TelemetryRecorder` + `TelemetryStore`: daily rollup bookkeeping; the sink is inert here.
 
 Services/
@@ -155,6 +163,7 @@ Credential sources and hosts as written in each provider folder under `Sources/O
 | Copilot | `~/.config/github-copilot/apps.json` and `hosts.json`, `~/.config/gh/hosts.yml`, keychain `gh:github.com` | `api.github.com` | none |
 | Devin | `~/.local/share/devin/credentials.toml`, Devin's `state.vscdb` | `server.codeium.com` by default | none |
 | Grok | `~/.grok/auth.json` | `cli-chat-proxy.grok.com`, `auth.x.ai` | JSONL under `$GROK_HOME` or `~/.grok` |
+| Ollama | `~/.ollama/id_ed25519`, the signing key that `ollama signin` links to an account. There is no token; each request is signed with this key | `ollama.com` (`GET /api/balance`) | none |
 | OpenCode | `auth.json` (`opencode-go` key) in the OpenCode data dir | `opencode.ai`, only when the `opencode-go` key exists | `opencode*.db` in `~/.local/share/opencode` (or `$OPENCODE_DATA_DIR`, `$XDG_DATA_HOME/opencode`) |
 | OpenRouter | `~/.config/openusage/openrouter.json`, `~/.config/openrouter/key.json`, `OPENROUTER_API_KEY`, `OPENROUTER_KEY` | `openrouter.ai` | none |
 | Z.ai | `~/.config/openusage/zai.json`, `~/.config/zai/key.json`, `ZAI_API_KEY`, `GLM_API_KEY` | `api.z.ai` | none |
@@ -190,31 +199,41 @@ Credential sources and hosts as written in each provider folder under `Sources/O
 ## 6. Divergence from upstream
 
 Upstream is [robinebers/openusage](https://github.com/robinebers/openusage). GitHub does not list
-this repo as a fork (`gh repo view` returned no parent on 27 Sep 2026). It was branched from upstream
-tag `v0.7.10` (commit `05c40a1`) and adds five commits. `git diff v0.7.10 no-telemetry` touches 44 files (511 insertions, 288 deletions), so
-the divergence is wider than `Telemetry.swift`:
+this repo as a fork (`gh repo view` returned no parent on 27 Sep 2026). The fork was branched from
+upstream tag `v0.7.10` and merged upstream `v0.7.12` and `v0.7.16`. On 1 Nov 2026,
+`git diff v0.7.16 no-telemetry` touched 72 files (1,523 insertions, 436 deletions).
+
+Do not merge upstream `main` after `v0.7.16`. Upstream commit `7129ab2` (28 Oct 2026) replaces the
+app with "OpenUsage Light", which removes local logs, spend history, iCloud sync, the CLI and the
+local HTTP API. Later upstream fixes come in one at a time; see
+[fork-maintenance.md](fork-maintenance.md).
 
 | Change | Files |
 |---|---|
 | Telemetry strip: no baked PostHog token, `OPENUSAGE_POSTHOG_TOKEN` override removed | `Sources/OpenUsage/Services/Telemetry.swift`; two new tests in `Tests/OpenUsageTests/TelemetrySinkTests.swift` |
-| Rebrand to UsageBar per upstream `TRADEMARK.md`: display strings, outbound `User-Agent: UsageBar` (Codex, Copilot org billing and Grok clients), unified-log subsystem, log path | 20 other files under `Sources/` (including `OpenUsageCLI.swift`); `Tests/OpenUsageTests/GrokProviderTests.swift` and `LogFileTests.swift` updated to match |
-| Build identity: app name `UsageBar`, bundle id `io.github.omar16100.usagebar`, iCloud container id | `script/build_and_run.sh` |
+| Rebrand to UsageBar per upstream `TRADEMARK.md`: display strings (including the welcome screen and the `Help Make UsageBar Better` label), outbound `User-Agent: UsageBar` (Codex, Copilot org billing and Grok clients), unified-log subsystem, log path | Files under `Sources/` (including `OpenUsageCLI.swift`); `Tests/OpenUsageTests/GrokProviderTests.swift` and `LogFileTests.swift` updated to match |
+| Report an Issue opens this fork's issue tracker | `Sources/OpenUsage/Views/HeaderView.swift` |
+| Build identity: app name `UsageBar`, bundle id `io.github.omar16100.usagebar`, iCloud container id `iCloud.io.github.omar16100.usagebar`, dev build label `0.7.16` | `script/build_and_run.sh` |
+| iCloud Drive sync for unprovisioned builds, with peer polling and downloads | `Sources/OpenUsage/Stores/ICloudUsageSyncStore.swift` |
+| Explicit Claude profile homes | `Sources/OpenUsage/Services/ProviderAccountAssembly.swift`, `ProviderAccountDiscoveryReadout.swift`, `Sources/OpenUsage/Providers/ProviderCatalog.swift`, `DefaultAccountObserver.swift`, `Stores/ProviderAccountsStore.swift`; tests in `ProviderAccountAssemblyTests.swift` |
+| Upstream new-version notice removed (it says spend and token tracking will go away) | `NewVersionNoticeCard.swift` and its test deleted; `OnboardingStore.swift`, `DashboardContentView.swift` |
+| Claude plan names Max and Ultra, taken from upstream `main` (`dd94b65`) | `Sources/OpenUsage/Providers/Claude/ClaudeUsageMapper.swift`; `Tests/OpenUsageTests/ClaudePlanTests.swift` |
 | App icon assets and screenshot removed | `assets/AppIcon.icon/`, `assets/AppIcon.prebuilt/`, `assets/screenshot.jpg` (deleted). The same gauge glyph as the deleted `AppIcon.icon/Assets/dashboard-3-line.svg` (identical path data) is still bundled as `Sources/OpenUsage/Resources/ProviderIcons/openusage.svg` and drawn by `MenuBarIcon`, the screen-share label in `MenuBarStripRenderer` and `ShareCardChrome` |
 | Dependabot config removed | `.github/dependabot.yml` (deleted) |
-| Fork docs | `README.md` replaced; `docs/fork-maintenance.md` and `docs/plans/` added; `docs/privacy.md` rewritten; `docs/README.md`, `debugging.md`, `icloud-sync.md`, `logging.md`, `settings.md`, `updates.md` and `research/account-first-plan.md` edited for the new name, log path or fork notices |
+| Fork docs | `README.md` replaced; `docs/fork-maintenance.md`, `docs/index.md`, this file and `docs/plans/` added; `docs/privacy.md` rewritten; other docs edited for the new name, log path, profiles or fork notices |
 
 Unchanged from upstream, and easy to mistake for fork work: SwiftPM package, target and binary
 names (`OpenUsage`, `openusage-cli`, helper `openusage`), `Package.swift` dependencies (PostHog and
 Sparkle are still linked), the `~/Library/Application Support/OpenUsage/`, `~/.openusage/` and
 `~/.config/openusage/` paths, the pricing supplement URL on upstream's GitHub Pages, the CLI's
 unbundled fallback defaults suite `com.robinebers.openusage` (`Sources/OpenUsageCLI/AppBundleLocator.swift`),
-the `NSUbiquitousContainers` key in the Info.plist that `script/build_and_run.sh` writes
-(`iCloud.com.robinebers.openusage.dev`), `script/release.sh`, and the seven workflows in
-`.github/workflows/`. GitHub Actions is disabled on this repo (repo Actions permissions returned
+`script/release.sh`, and the eight workflows in `.github/workflows/` (`pullfrog.yml` came with
+`v0.7.16`). GitHub Actions is disabled on this repo (repo Actions permissions returned
 `enabled: false` on 27 Sep 2026), so none of those workflows run.
 
 ## Change log
 
 | Date | Change |
 |---|---|
+| 1 Nov 2026 | Updated at `a9daaf2`: upstream `v0.7.16` base, iCloud Drive storage, background account discovery with Claude profile homes, Claude reset claim as a second provider-API write, Ollama provider, rewritten divergence section. |
 | 27 Sep 2026 | Created from the source at `6fd60f9`. |

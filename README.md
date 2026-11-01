@@ -42,6 +42,11 @@ than `OpenUsage`, so provider APIs and the UI do not present this build as upstr
 Additional Claude Code profile homes can be registered alongside upstream account discovery. Each
 profile keeps its own credentials and usage history; see [Claude profiles](docs/providers/claude.md).
 
+Upstream releases after `v0.7.16` remove local spend and token history, iCloud sync, the CLI and the
+local HTTP API. This fork keeps those features and stays on `v0.7.16`. It removes the upstream notice
+about that change, and it takes later upstream fixes one at a time. See
+[fork maintenance](docs/fork-maintenance.md).
+
 ## Build
 
 Requires macOS 15 or later and a Swift 6.2 toolchain (Xcode 26 or later).
@@ -51,9 +56,9 @@ swift test                    # full regression suite
 script/build_and_run.sh run   # stages dist/UsageBar.app and launches it
 ```
 
-This fork does not run CI. Last local run: `swift test` on 1 Nov 2026 at commit `a33dcbc`
-(v0.7.16 merge) printed 1,672 XCTest cases, 4 skipped, 0 failures, plus 3 Swift Testing tests
-passed. The four skips are opt-in checks against real local logs or a live Claude account
+This fork does not run CI. Last local run: `swift test` on 1 Nov 2026 at commit `a9daaf2`
+(v0.7.16 merge plus the Max and Ultra plan names) printed 1,677 XCTest cases, 4 skipped, 0 failures,
+plus 3 Swift Testing tests passed. The four skips are opt-in checks against real local logs or a live Claude account
 (`OPENUSAGE_CLAUDE_PARITY`, `OPENUSAGE_CODEX_PARITY`, `OPENUSAGE_LIVE_CLAUDE`,
 `OPENUSAGE_LIVE_CLAUDE_CLAIM_DRYRUN`).
 

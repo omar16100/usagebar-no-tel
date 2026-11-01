@@ -21,6 +21,7 @@ The fork carries these local changes:
    (`ProviderAccountDiscoveryReadout.Claude.profiles`).
 5. **No upstream new-version notice.** v0.7.16 added a dashboard card that says the next version
    removes spend and token tracking. That is false for this fork, so the card is removed.
+6. **Fixes taken from upstream main.** Each one is listed in the table below.
 
 ## Remotes
 
@@ -37,7 +38,12 @@ replaces the app with "OpenUsage Light". Light removes local log scans, spend an
 iCloud sync, the CLI, the local HTTP API and the log file. This fork depends on all of these.
 
 To get a later upstream fix, use `git cherry-pick` and resolve it by hand. Examine each fix before
-you apply it, because upstream files can be absent here.
+you apply it, because upstream files can be absent here. Upstream tests often use types that exist
+only in Light (`Account`, `AccountProviderRuntime`). Change those tests to use the code in this fork.
+
+| Date | Upstream commit | Fork commit | Change |
+|---|---|---|---|
+| 1 Nov 2026 | `dd94b65` (#1499) | `a9daaf2` | Claude plan badge reads Max and Ultra, Anthropic's new names for Max 5x and Max 20x (30 Oct 2026). Upstream tests adapted to `formatLivePlan(profile:credentials:)` |
 
 ## Rebasing onto a newer upstream release
 
@@ -80,8 +86,8 @@ lives in upstream's code.
 
 ## Test validation
 
-The v0.7.16 fork passes the full suite: 1,672 XCTest cases, 4 skipped, no failures, plus 3 Swift
-Testing cases (last run 1 Nov 2026 at `a33dcbc`; see the README Build section). The
+The v0.7.16 fork passes the full suite: 1,677 XCTest cases, 4 skipped, no failures, plus 3 Swift
+Testing cases (last run 1 Nov 2026 at `a9daaf2`; see the README Build section). The
 personal-profile tests also cover overlap with Claude Swap and a default login with no organization.
 
 Keep tests isolated from this Mac's live data. The empty-Claude-history fixtures explicitly exclude

@@ -2,6 +2,8 @@
 
 **Status (1 Nov 2026):** Done on the laptop. Merge commit `a33dcbc`. `swift test`: 1,672 XCTest cases, 4 skipped, 0 failures; 3 Swift Testing tests passed. The app runs `0.7.16-dev`; the log shows `telemetry inert` and `iCloud history loaded 2 devices (1 peers)`. Added test `testProfileCardSurvivesDefaultLoginWithoutOrganization` for Review Focus item 4.
 
+**Follow-up (1 Nov 2026):** commit `a9daaf2` takes upstream fix `dd94b65` (#1499) from `main`. The Claude badge reads Max and Ultra. Full suite after it: 1,677 XCTest cases, 4 skipped, 0 failures. The live personal card showed `Ultra` and no Session row.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Move the `no-telemetry` branch from upstream `v0.7.12` to upstream `v0.7.16` and keep all fork behavior.

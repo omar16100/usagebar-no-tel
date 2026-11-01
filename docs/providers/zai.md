@@ -54,8 +54,12 @@ an invalid response instead of being shown as zero.
 ## Troubleshooting
 
 - **"No Z.ai API key"** — add a key in Settings → API Keys, or export `ZAI_API_KEY`.
-- **"Z.ai API key invalid"** — the key was rejected (401/403). Regenerate it in the
-  [Z.ai console](https://z.ai/manage-apikey/apikey-list).
+- **"Z.ai API key invalid"**: Z.ai rejected the key. Z.ai can send this as HTTP 401/403, or as
+  HTTP 200 with `success:false` and a token error `code` (1000, 1001, 1003 or 401). Regenerate the
+  key in the [Z.ai console](https://z.ai/manage-apikey/apikey-list).
+- **The card stays on an old key after you change `ZAI_API_KEY`**: the app reads its environment
+  and your login shell environment one time, when it starts. Quit and relaunch the app after a key
+  change in your shell profile.
 - **"No active GLM Coding Plan"** (amber notice by the name) — the key is valid, but the account has no
   GLM Coding Plan, so there's nothing to meter. Subscribe at [z.ai/subscribe](https://z.ai/subscribe);
   usage appears once your plan is active.

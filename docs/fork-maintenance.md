@@ -22,6 +22,9 @@ The fork carries these local changes:
 5. **No upstream new-version notice.** v0.7.16 added a dashboard card that says the next version
    removes spend and token tracking. That is false for this fork, so the card is removed.
 6. **Fixes taken from upstream main.** Each one is listed in the table below.
+7. **Z.ai auth errors in an HTTP 200 body.** Z.ai sends a rejected key as HTTP 200 with
+   `success:false` and a token `code`. `ZAIUsageMapper.isAuthFailure` makes the card show "Z.ai API
+   key invalid" and not "Usage response invalid". Tests are in `ZAIProviderTests` (1 Nov 2026).
 
 ## Remotes
 

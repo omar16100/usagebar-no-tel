@@ -312,6 +312,44 @@ final class ZAIProviderTests: XCTestCase {
         }
     }
 
+    func testRefreshTreatsAuthErrorInsideSuccessfulResponseAsInvalidKey() async {
+        // Z.ai sends a rejected key as HTTP 200 with an error body and no `data`. The 1000 and 401
+        // bodies were seen on 2026-11-01 (1000 for a revoked key, also with a Chinese `msg`; 401 for an
+        // empty token). 1001 and 1003 are the other token codes in Z.ai's error-code table.
+        let bodies = [
+            #"{"code":1000,"msg":"Authentication Failed","success":false}"#,
+            #"{"code":1000,"msg":"身份验证失败。","success":false}"#,
+            #"{"code":1001,"msg":"Authentication parameter not received in Header, unable to authenticate","success":false}"#,
+            #"{"code":1003,"msg":"Authentication Token expired, please regenerate/obtain","success":false}"#,
+            #"{"code":401,"msg":"token expired or incorrect","success":false}"#
+        ]
+
+        for body in bodies {
+            let provider = ZAIProvider(
+                authStore: makeAuthStore(key: "zai-test"),
+                usageClient: ZAIUsageClient(http: RoutingHTTPClient { _ in jsonResponse(body) })
+            )
+
+            let snapshot = await provider.refresh()
+
+            XCTAssertEqual(snapshot.errorCategory, .authInvalid, body)
+        }
+    }
+
+    func testRefreshKeepsUnrelatedErrorBodyAsInvalidResponse() async {
+        // Only the token codes mean a bad key. Another `success:false` body stays an invalid response.
+        let provider = ZAIProvider(
+            authStore: makeAuthStore(key: "zai-test"),
+            usageClient: ZAIUsageClient(http: RoutingHTTPClient { _ in
+                jsonResponse(#"{"code":500,"msg":"internal error","success":false}"#)
+            })
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(snapshot.errorCategory, .decoding)
+    }
+
     func testRefreshOnTransportErrorReportsNetwork() async {
         let provider = ZAIProvider(
             authStore: makeAuthStore(key: "zai-test"),

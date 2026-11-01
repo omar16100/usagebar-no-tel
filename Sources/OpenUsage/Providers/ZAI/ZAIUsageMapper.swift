@@ -38,6 +38,19 @@ enum ZAIUsageMapper {
         return ((root["msg"] as? String) ?? "").lowercased().contains("coding plan")
     }
 
+    /// True when a 2xx body says that Z.ai rejected the key. The monitor endpoints send an auth failure
+    /// as HTTP 200 with `success:false` and a token error `code` (seen on 2026-11-01: 1000 for a revoked
+    /// key, 401 for an empty token; 1001 and 1003 are the other token codes in Z.ai's error table).
+    /// Matched on `code`, not `msg`, because the `msg` text can be localized.
+    static func isAuthFailure(_ body: Data) -> Bool {
+        guard let root = ProviderParse.jsonObject(body),
+              (root["success"] as? Bool) == false,
+              let code = ProviderParse.number(root["code"]) else { return false }
+        return authFailureCodes.contains(code)
+    }
+
+    private static let authFailureCodes: Set<Double> = [401, 1000, 1001, 1003]
+
     /// Session + weekly + web-search meters from the quota payload. Missing required values are an
     /// invalid response rather than zero usage; an explicit empty array remains a valid no-data state.
     static func mapQuota(_ body: Data) throws -> [MetricLine] {

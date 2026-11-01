@@ -59,6 +59,10 @@ final class ZAIProvider: ProviderRuntime {
 
         switch quota {
         case .success(let body):
+            // Z.ai sends a rejected key as HTTP 200 with an error body, so check the body too.
+            if ZAIUsageMapper.isAuthFailure(body) {
+                return ProviderSnapshot.error(provider: provider, error: ZAIAuthError.invalidKey)
+            }
             // A valid key whose account has no GLM Coding Plan gets a 2xx with `success:false`. Surface
             // that as a clear provider warning (the header's amber notice) rather than three blank "No
             // data" meters that don't explain why nothing's there.

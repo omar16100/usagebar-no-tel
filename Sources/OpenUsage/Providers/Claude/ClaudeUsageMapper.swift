@@ -141,12 +141,12 @@ enum ClaudeUsageMapper {
             return nil
         }
         let base = raw.titleCased(separator: { $0 == " " }, lowercasingTail: true)
+        // Anthropic renamed Max 5x to Max and Max 20x to Ultra on Oct 30, 2026 (upstream #1497).
+        let tier = rateLimitTier ?? ""
+        if base == "Ultra" || (base == "Max" && (tier.contains("ultra") || tier.contains("20x"))) { return "Ultra" }
+        if base == "Max" { return base }
 
-        guard let tier = rateLimitTier,
-              let match = tier.range(of: #"\d+x"#, options: .regularExpression)
-        else {
-            return base
-        }
+        guard let match = tier.range(of: #"\d+x"#, options: .regularExpression) else { return base }
         return "\(base) \(tier[match])"
     }
 

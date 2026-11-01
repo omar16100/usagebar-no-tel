@@ -21,7 +21,7 @@ The default Claude profile continues to follow `CLAUDE_CONFIG_DIR`.
 
 | Metric | Meaning |
 |---|---|
-| Session | 5-hour rolling window usage |
+| Session | 5-hour rolling window usage. A verified Ultra account has no 5-hour limit, so its card has no Session row |
 | Weekly | 7-day window usage |
 | Fable | Separate weekly Fable limit (model-scoped window from the `limits` array) |
 | Sonnet | Separate weekly Sonnet limit (plan-dependent) |
@@ -31,9 +31,11 @@ The default Claude profile continues to follow `CLAUDE_CONFIG_DIR`.
 
 Fable is enabled and always visible directly below Weekly by default. Sonnet stays off until you
 enable it in Customize. Rate Limit Resets is on but tucked behind the caret. When Claude reports your plan name, OpenUsage shows it beside the provider name.
-The plan comes from Anthropic's live account profile, so an upgrade (say, Max 5x to Max 20x) shows up on
+The plan comes from Anthropic's live account profile, so an upgrade (say, Max to Ultra) shows up on
 the next refresh without signing in to Claude Code again. If the profile can't be read, the badge falls
 back to the plan saved with your login.
+Anthropic renamed Max 5x to Max and Max 20x to Ultra on 30 Oct 2026. The badge uses the new names for
+both the live plan and the saved plan.
 
 ## Rate limit resets
 

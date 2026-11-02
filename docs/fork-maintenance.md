@@ -25,6 +25,11 @@ The fork carries these local changes:
 7. **Z.ai auth errors in an HTTP 200 body.** Z.ai sends a rejected key as HTTP 200 with
    `success:false` and a token `code`. `ZAIUsageMapper.isAuthFailure` makes the card show "Z.ai API
    key invalid" and not "Usage response invalid". Tests are in `ZAIProviderTests` (1 Nov 2026).
+8. **Antigravity 403 `SUBSCRIPTION_REQUIRED` is not an auth failure.** Cloud Code refuses the quota
+   summary for a free-tier account with this 403, but the legacy endpoints still answer with the
+   same token. `AntigravityUsageClient.isAuthRejection` keeps that 403 out of `.authFailed`, so the
+   provider uses `fetchAvailableModels` and does not show "Antigravity sign-in expired". Tests are in
+   `AntigravitySubscriptionRequiredTests` (2 Nov 2026).
 
 ## Remotes
 
@@ -89,8 +94,9 @@ lives in upstream's code.
 
 ## Test validation
 
-The v0.7.16 fork passes the full suite: 1,677 XCTest cases, 4 skipped, no failures, plus 3 Swift
-Testing cases (last run 1 Nov 2026 at `a9daaf2`; see the README Build section). The
+The v0.7.16 fork passes the full suite: 1,681 XCTest cases, 4 skipped, no failures, plus 3 Swift
+Testing cases (last run 2 Nov 2026 with the Antigravity fix on top of `387030d`; see the README
+Build section). The
 personal-profile tests also cover overlap with Claude Swap and a default login with no organization.
 
 Keep tests isolated from this Mac's live data. The empty-Claude-history fixtures explicitly exclude

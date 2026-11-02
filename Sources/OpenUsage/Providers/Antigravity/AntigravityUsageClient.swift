@@ -122,7 +122,8 @@ struct AntigravityUsageClient: Sendable {
     /// group while `cloudcode-pa` also returned Gemini, so a caller merging by id may need both. Stops
     /// after the first base when its 2xx body is one `isComplete` accepts: callers merge first-wins, so
     /// a later answer couldn't change the result. Any 2xx wins; otherwise a 401/403 on any base is
-    /// `.authFailed`, and anything else `.unavailable`.
+    /// `.authFailed`, and anything else `.unavailable`. A 403 `SUBSCRIPTION_REQUIRED` is not an auth
+    /// failure: free-tier accounts get it from the quota summary while the legacy endpoints still answer.
     func cloudCodeAllHosts(
         path: String,
         token: String,
@@ -141,8 +142,23 @@ struct AntigravityUsageClient: Sendable {
         }
         let bodies = responses.filter { (200..<300).contains($0.statusCode) }.map(\.body)
         if !bodies.isEmpty { return .ok(bodies) }
-        if responses.contains(where: { $0.statusCode == 401 || $0.statusCode == 403 }) { return .authFailed }
+        if responses.contains(where: Self.isAuthRejection) { return .authFailed }
         return .unavailable
+    }
+
+    /// A 401/403 that rejects the token. A 403 whose `ErrorInfo` reason is `SUBSCRIPTION_REQUIRED` is a
+    /// license answer for that one RPC, so it does not count.
+    static func isAuthRejection(_ response: HTTPResponse) -> Bool {
+        guard response.statusCode == 401 || response.statusCode == 403 else { return false }
+        return !isSubscriptionRequired(response.body)
+    }
+
+    static func isSubscriptionRequired(_ body: Data) -> Bool {
+        guard let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let error = json["error"] as? [String: Any],
+              let details = error["details"] as? [[String: Any]]
+        else { return false }
+        return details.contains { ($0["reason"] as? String) == "SUBSCRIPTION_REQUIRED" }
     }
 
     private static func cloudCodeRequest(url: URL, token: String, userAgent: String, payload: Data) -> HTTPRequest {

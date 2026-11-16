@@ -496,16 +496,10 @@ final class ClaudeProvider: ProviderRuntime {
               verifiedCredentialFingerprint == fingerprint
         else { return }
         pendingLaunchSnapshot = nil
-        let now = now()
-        let lines = snapshot.lines.compactMap { line -> MetricLine? in
-            guard ClaudeUsageMapper.liveLimitLabels.contains(line.label) else { return nil }
-            switch line {
-            case .progress(_, _, _, _, let resetsAt?, _, _) where resetsAt <= now:
-                return nil
-            default:
-                return ClaudeUsageMapper.droppingElapsedResetGrants(line, now: now)
-            }
-        }
+        let lines = ClaudeUsageMapper.droppingElapsedWindows(
+            snapshot.lines.filter { ClaudeUsageMapper.liveLimitLabels.contains($0.label) },
+            now: now()
+        )
         guard !lines.isEmpty else { return }
         AppLog.info(LogTag.plugin("claude"), "rate-limited after launch; keeping cached limits")
         lastGoodUsage = ClaudeMappedUsage(
@@ -586,6 +580,9 @@ final class ClaudeProvider: ProviderRuntime {
             }
             return mapped
         }
+        // The last-good meters can be old by the time a long cooldown ends: drop each window whose reset has
+        // passed rather than show its pre-reset value as current.
+        mapped.lines = ClaudeUsageMapper.droppingElapsedWindows(mapped.lines, now: now())
         mapped.lines.append(ClaudeUsageMapper.rateLimitedNote(retryAfterSeconds: retryAfterSeconds))
         mapped.warning = ClaudeUsageMapper.rateLimitedWarning(retryAfterSeconds: retryAfterSeconds)
         return mapped

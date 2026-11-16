@@ -54,6 +54,15 @@ enum ClaudeUsageMapper {
         return ClaudeResetGrantStatus.parse(body["cedar_ember"])
     }
 
+    /// Lines held between fetches, minus every meter whose reset time has passed (that window no longer
+    /// exists, so its old value would read as current) and every reset grant whose deadline has passed.
+    static func droppingElapsedWindows(_ lines: [MetricLine], now: Date) -> [MetricLine] {
+        lines.compactMap { line -> MetricLine? in
+            if case .progress(_, _, _, _, let resetsAt?, _, _) = line, resetsAt <= now { return nil }
+            return droppingElapsedResetGrants(line, now: now)
+        }
+    }
+
     /// A Rate Limit Resets line held between fetches, minus every reset whose deadline has passed. Other
     /// lines pass through unchanged.
     static func droppingElapsedResetGrants(_ line: MetricLine, now: Date) -> MetricLine {

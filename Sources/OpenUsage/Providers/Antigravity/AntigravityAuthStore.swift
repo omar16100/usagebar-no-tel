@@ -9,46 +9,109 @@ struct AntigravityKeychainToken: Sendable, Equatable {
     var accessToken: String?
     var refreshToken: String?
     var expiry: Date?
+    var authMethod: String? = nil
+    var projectID: String? = nil
+    var region: String? = nil
+    var userTier: String? = nil
+    var email: String? = nil
+
+    var isBusinessAccount: Bool { authMethod == "gcp" }
+
+    var businessPlan: String {
+        switch userTier {
+        case "gcp-ge-plus-tier": "Gemini Enterprise Plus"
+        case "gcp-ge-standard-tier": "Gemini Enterprise Standard"
+        default: "Google Cloud"
+        }
+    }
+
+    var identityKey: String? {
+        let normalizedEmail = email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().nilIfEmpty
+        let normalizedProject = projectID?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().nilIfEmpty
+        if isBusinessAccount {
+            if let normalizedEmail, let normalizedProject {
+                return "\(normalizedEmail)|\(normalizedProject)"
+            }
+            return normalizedEmail ?? normalizedProject
+        }
+        return normalizedEmail
+    }
+
+    var displayLabel: String? {
+        email?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? projectID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
 }
 
 struct AntigravityAuthStore: Sendable {
+    enum CredentialSource: Sendable, Equatable {
+        case keychain
+        case tokenFile(String)
+    }
+
     static let keychainService = "gemini"
     static let keychainAccount = "antigravity"
+    static let relativeTokenFilePath = ".gemini/antigravity-cli/antigravity-oauth-token"
     /// Our own cache of refreshed access tokens, so a Google OAuth refresh happens ~once per token
     /// lifetime instead of every refresh cycle. We never write back to Antigravity's keychain item.
     static let cachePath = "~/Library/Application Support/OpenUsage/antigravity/auth.json"
     /// Treat a token with less than this left as already expired (skip straight to refresh).
     static let refreshBuffer: TimeInterval = 60
 
+    static func tokenFilePath(forHome home: String) -> String {
+        home.trimmingTrailingSlashes + "/" + relativeTokenFilePath
+    }
+
+    static func cachePath(forProviderID providerID: String) -> String {
+        guard providerID != "antigravity" else { return Self.cachePath }
+        return "~/Library/Application Support/OpenUsage/antigravity/auth-\(providerID).json"
+    }
+
     var keychain: KeychainAccessing
     var files: TextFileAccessing
+    var credentialSource: CredentialSource
+    var cachePath: String
     var now: @Sendable () -> Date
 
     init(
         keychain: KeychainAccessing = SecurityKeychainAccessor(),
         files: TextFileAccessing = LocalTextFileAccessor(),
+        credentialSource: CredentialSource = .keychain,
+        cachePath: String = AntigravityAuthStore.cachePath,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.keychain = keychain
         self.files = files
+        self.credentialSource = credentialSource
+        self.cachePath = cachePath
         self.now = now
     }
 
-    /// Blocking keychain read — call off the main actor.
+    /// Blocking credential read — call off the main actor.
     func loadKeychainToken() throws -> AntigravityKeychainToken? {
         let raw: String?
-        do {
-            raw = try keychain.readGenericPassword(
-                service: Self.keychainService,
-                account: Self.keychainAccount
-            )
-        } catch {
-            AppLog.error(LogTag.auth("antigravity"), "keychain credential read failed")
-            throw AntigravityError.credentialStoreUnreadable
+        switch credentialSource {
+        case .keychain:
+            do {
+                raw = try keychain.readGenericPassword(
+                    service: Self.keychainService,
+                    account: Self.keychainAccount
+                )
+            } catch {
+                AppLog.error(LogTag.auth("antigravity"), "keychain credential read failed")
+                throw AntigravityError.credentialStoreUnreadable
+            }
+        case .tokenFile(let path):
+            do {
+                raw = try files.readTextIfPresent(path)
+            } catch {
+                AppLog.error(LogTag.auth("antigravity"), "token file credential read failed")
+                throw AntigravityError.credentialStoreUnreadable
+            }
         }
         guard let raw else { return nil }
         guard let token = Self.extractToken(fromKeychainRaw: raw) else {
-            AppLog.error(LogTag.auth("antigravity"), "keychain credential is malformed")
+            AppLog.error(LogTag.auth("antigravity"), "credential data is malformed")
             throw AntigravityError.invalidCredentialData
         }
         return token
@@ -80,7 +143,7 @@ struct AntigravityAuthStore: Sendable {
         // extra refresh.
         let text: String
         do {
-            guard let stored = try files.readTextIfPresent(Self.cachePath) else { return nil }
+            guard let stored = try files.readTextIfPresent(cachePath) else { return nil }
             text = stored
         } catch {
             AppLog.warn(LogTag.auth("antigravity"), "refreshed-token cache read failed; ignoring it")
@@ -114,7 +177,7 @@ struct AntigravityAuthStore: Sendable {
         )
         do {
             let data = try JSONEncoder().encode(cached)
-            try files.writeText(Self.cachePath, String(decoding: data, as: UTF8.self))
+            try files.writeText(cachePath, String(decoding: data, as: UTF8.self))
         } catch {
             // The refreshed token still works for this session; a failed cache only means we refresh
             // again next cycle. Log loudly rather than fail the live fetch.
@@ -125,7 +188,7 @@ struct AntigravityAuthStore: Sendable {
     /// Remove only OpenUsage's derived token; Antigravity's Keychain entry is never modified.
     func discardCachedToken() {
         do {
-            try files.remove(Self.cachePath)
+            try files.remove(cachePath)
         } catch {
             AppLog.warn(LogTag.auth("antigravity"), "failed to remove stale refreshed-token cache")
         }
@@ -192,7 +255,16 @@ struct AntigravityAuthStore: Sendable {
             }
             return nil
         }
-        return AntigravityKeychainToken(accessToken: access, refreshToken: refresh, expiry: expiry)
+        return AntigravityKeychainToken(
+            accessToken: access,
+            refreshToken: refresh,
+            expiry: expiry,
+            authMethod: firstString(object, ["auth_method"]),
+            projectID: firstString(object, ["project_id"]),
+            region: firstString(object, ["region"]),
+            userTier: firstString(object, ["user_tier"]),
+            email: firstString(object, ["id_token_email", "email"])
+        )
     }
 
     private static func firstString(_ object: [String: Any], _ keys: [String]) -> String? {

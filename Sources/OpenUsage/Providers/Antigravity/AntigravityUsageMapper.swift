@@ -73,9 +73,16 @@ enum AntigravityUsageMapper {
 
         var pooled: [String: (fraction: Double, resetTime: Date?)] = [:]
         for bucket in groupLists.joined().filter({ $0.displayName != argonGroupName }).flatMap({ $0.buckets ?? [] }) {
-            guard let id = bucket.bucketId, summaryBuckets.contains(where: { $0.bucketID == id }) else {
+            guard let id = bucket.bucketId,
+                  id == "gemini-enterprise-weekly" || summaryBuckets.contains(where: { $0.bucketID == id }) else {
                 AppLog.warn(LogTag.plugin("antigravity"), "quota summary: skipping unrecognized bucket id '\(bucket.bucketId ?? "<absent>")'")
                 continue
+            }
+            if id == "gemini-enterprise-weekly" {
+                guard bucket.window == "weekly", bucket.disabled != true, !bucket.hasInvalidDisabledFlag else {
+                    AppLog.warn(LogTag.plugin("antigravity"), "Enterprise quota has no usable weekly window")
+                    continue
+                }
             }
             guard pooled[id] == nil else { continue } // duplicate bucket id — first one wins
             guard let fraction = bucket.remainingFraction, fraction.isFinite else {
@@ -86,7 +93,8 @@ enum AntigravityUsageMapper {
         }
 
         var lines: [MetricLine] = summaryBuckets.compactMap { spec in
-            guard let entry = pooled[spec.bucketID] else { return nil }
+            let enterprise = spec.bucketID == "gemini-weekly" ? pooled["gemini-enterprise-weekly"] : nil
+            guard let entry = pooled[spec.bucketID] ?? enterprise else { return nil }
             return line(pool: spec.label, fraction: entry.fraction, resetTime: entry.resetTime, periodMs: spec.periodMs)
         }
         // Argon is judged per body: combining two hosts' Argon groups would read as an ambiguous bucket.

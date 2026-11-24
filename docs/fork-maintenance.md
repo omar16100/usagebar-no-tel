@@ -30,6 +30,19 @@ The fork carries these local changes:
    same token. `AntigravityUsageClient.isAuthRejection` keeps that 403 out of `.authFailed`, so the
    provider uses `fetchAvailableModels` and does not show "Antigravity sign-in expired". Tests are in
    `AntigravitySubscriptionRequiredTests` (2 Nov 2026).
+9. **Antigravity business accounts.** The Keychain entry supplies the authentication method, project, region, and tier.
+   For `gcp` accounts, UsageBar reads the business OAuth client ID and secret from `UserDefaults`
+   (`openusage.antigravity.businessOAuthClientID.v1` / `openusage.antigravity.businessOAuthClientSecret.v1`)
+   and queries the Business AI Code quota endpoint.
+   The existing Weekly row shows the project quota and its reset time.
+   Tests are in `AntigravityBusinessAccountTests` (23 Nov 2026).
+10. **Explicit Antigravity profile homes.** The `openusage.antigravity.profileHomes.v1` preference adds
+    isolated `agy` profile homes (separate `HOME` with `AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1`) to
+    background account discovery (`ProviderAccountDiscoveryReadout.Antigravity`). Each card keeps
+    isolated credentials (Keychain vs `<profileHome>/.gemini/antigravity-cli/antigravity-oauth-token`),
+    per-card refreshed-token cache files, isolated conversation DB scanning, and account-aware iCloud
+    history sync, and skips shared language-server probing when multiple Antigravity cards exist.
+    Tests are in `AntigravityProfileAccountsTests` (24 Nov 2026).
 
 ## Remotes
 
@@ -98,6 +111,17 @@ The v0.7.16 fork passes the full suite: 1,681 XCTest cases, 4 skipped, no failur
 Testing cases (last run 2 Nov 2026 with the Antigravity fix on top of `387030d`; see the README
 Build section). The
 personal-profile tests also cover overlap with Claude Swap and a default login with no organization.
+
+The business-account repair passed 121 Antigravity tests on 23 Nov 2026.
+The full suite passed 1,691 XCTest cases, with four optional live checks skipped and no failures.
+The three Swift Testing cases also passed.
+The source check found no private account identifiers or account tokens in the 499 source, test, and script files.
+The release build and local installation passed. The native menu-bar Weekly value matched the live business quota response.
+The application signature passed validation. The bundle check found no private account data in its 120 files.
+
+The explicit Antigravity profile homes support passed 6 new tests in `AntigravityProfileAccountsTests` on 24 Nov 2026.
+The full suite passed 1,697 XCTest cases, with four optional live checks skipped and no failures, plus all 3 Swift Testing cases.
+The release build, code signature verification, live multi-card refresh, and v2 account-aware iCloud history export all passed.
 
 Keep tests isolated from this Mac's live data. The empty-Claude-history fixtures explicitly exclude
 Pi history; the OpenCode integration fixture uses the same instant for its record and test clock so

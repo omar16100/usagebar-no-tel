@@ -449,6 +449,9 @@ final class WidgetDataStore {
         let hasMultipleClaudeCards = registry.providers.count {
             ProviderAccountID.family(of: $0.id) == "claude"
         } > 1
+        let hasMultipleAntigravityCards = registry.providers.count {
+            ProviderAccountID.family(of: $0.id) == "antigravity"
+        } > 1
         for (providerID, descriptor) in registry.historyDescriptorsByProvider
         where descriptor.scope == .machineLocal && isProviderEnabled(providerID) {
             if let history = localSnapshots[providerID]?.usageHistory {
@@ -457,6 +460,14 @@ final class WidgetDataStore {
                         identities[providerID] = identity.lowercased()
                     } else if hasMultipleClaudeCards || providerID != "claude" {
                         AppLog.warn(.config, "sync: omitting Claude history without account ownership")
+                        continue
+                    }
+                }
+                if ProviderAccountID.family(of: providerID) == "antigravity" {
+                    if let identity = providerIdentityKeys[providerID] {
+                        identities[providerID] = identity.lowercased()
+                    } else if hasMultipleAntigravityCards || providerID != "antigravity" {
+                        AppLog.warn(.config, "sync: omitting Antigravity history without account ownership")
                         continue
                     }
                 }
@@ -480,8 +491,11 @@ final class WidgetDataStore {
         let hasClaudeAccountCards = providers.keys.contains {
             ProviderAccountID.family(of: $0) == "claude" && $0 != "claude"
         }
-        let usesAccountSchema = hasClaudeAccountCards || identities.keys.contains {
-            ProviderAccountID.family(of: $0) == "codex"
+        let hasAntigravityAccountCards = providers.keys.contains {
+            ProviderAccountID.family(of: $0) == "antigravity" && $0 != "antigravity"
+        }
+        let usesAccountSchema = hasClaudeAccountCards || hasAntigravityAccountCards || identities.keys.contains {
+            ProviderAccountID.family(of: $0) == "codex" || ProviderAccountID.family(of: $0) == "antigravity"
         }
         // v2 requires ownership for every Claude entry, even a legacy bare card. One unresolved
         // login must not invalidate the document and block syncing every other provider.

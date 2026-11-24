@@ -26,10 +26,37 @@ While a pool's rolling 5-hour window has no usage yet, that meter reads **Not st
 
 ## Where credentials come from
 
+### Google Cloud business accounts
+
+UsageBar reads the authentication method, project, region, and tier from the Antigravity Keychain entry.
+These account values stay outside the source and application bundle. Tests use dummy account values.
+For `gcp` accounts, UsageBar reads the business OAuth client ID and secret from macOS preferences (`openusage.antigravity.businessOAuthClientID.v1` and `openusage.antigravity.businessOAuthClientSecret.v1`) to refresh expired tokens.
+It requests the project quota from the Business AI Code API with the saved tier.
+The **Weekly** row shows the `gemini-enterprise-weekly` quota and its reset time.
+This quota applies to the project. Local token and cost history still applies to conversations on this Mac.
+The other quota rows show **No data** when the business response does not contain those quotas.
+
+Before this repair, UsageBar sent business tokens to the personal-account OAuth client.
+Google returned `unauthorized_client`, and the card retained old data with an expired sign-in error.
+Personal-account quota endpoints also returned unrelated values for the business account.
+Business requests now use only the business endpoint. An unavailable response produces an error.
+
+### Credential sources
+
 OpenUsage never asks for a token — it reads what Antigravity already has:
 
 - **Antigravity running** — OpenUsage talks to the app's local language server (the richest source, and where the plan name comes from).
 - **App closed** — it falls back to the OAuth token Antigravity / `agy` store in your macOS Keychain and queries Google's Cloud Code API. An expired token is refreshed automatically (OpenUsage never writes back to Antigravity's own keychain item). Its short-lived cache is reused only while the same Keychain login is present and readable.
+
+### Additional `agy` profile homes
+
+To track isolated `agy` profiles (launched with a separate `HOME` and `AGY_CLI_FORCE_FILE_TOKEN_STORAGE=1`), add their home directories to `openusage.antigravity.profileHomes.v1`:
+
+```sh
+defaults write io.github.omar16100.usagebar openusage.antigravity.profileHomes.v1 -array "$HOME/.agy-personal"
+```
+
+Restart UsageBar after changing this list. Each configured profile reads its OAuth token from `<profileHome>/.gemini/antigravity-cli/antigravity-oauth-token`, stores its refreshed access token in its own cache file, and scans only `<profileHome>/.gemini/antigravity*/conversations`. Isolated `agy` CLI profiles query `daily-cloudcode-pa` first with Antigravity's client User-Agent so the Gemini 5-hour and weekly pools match the CLI's live usage. When multiple Antigravity cards are active, UsageBar queries Cloud Code / Business AI Code directly with each card's own credentials instead of probing a shared local language server.
 
 If neither is available you'll see *Start Antigravity or run `agy` and try again.*
 

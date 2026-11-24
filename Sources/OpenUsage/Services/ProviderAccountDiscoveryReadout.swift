@@ -1,6 +1,13 @@
 import Foundation
 
 struct ProviderAccountDiscoveryReadout: Sendable {
+    struct Antigravity: Sendable {
+        let defaultAnchor: String
+        let outcome: DefaultAccountObserver.Outcome
+        /// One entry for each non-blank configured profile home, in the configured order.
+        var profiles: [AntigravityProfileObservation] = []
+    }
+
     struct Claude: Sendable {
         let outcome: DefaultAccountObserver.Outcome
         let swapAccounts: [ClaudeSwapAccount]
@@ -24,8 +31,15 @@ struct ProviderAccountDiscoveryReadout: Sendable {
         let outcome: DefaultAccountObserver.Outcome
     }
 
+    let antigravity: Antigravity?
     let claude: Claude?
     let codex: Codex?
+}
+
+/// The identity read from an explicit Antigravity profile home (`openusage.antigravity.profileHomes.v1`).
+struct AntigravityProfileObservation: Sendable {
+    let directory: String
+    let outcome: DefaultAccountObserver.Outcome
 }
 
 /// The identity read from an explicit Claude Code profile home (`openusage.claude.configDirectories.v1`).
@@ -46,6 +60,7 @@ extension ProviderAccountAssembly {
         accountsStore: ProviderAccountsStore,
         families: Set<String>,
         claudeConfigDirectories: [String] = [],
+        antigravityProfileHomes: [String] = [],
         listCodexHomeDirectories: @escaping @Sendable (String) -> [String],
         desktop: ClaudeDesktopAuthStore?,
         listDesktopOrganizationDirectories: @escaping @Sendable (URL) -> [String]
@@ -53,6 +68,13 @@ extension ProviderAccountAssembly {
         let hasEstablishedCodexAccounts = accountsStore.records.contains {
             $0.family == "codex" && $0.identityKey.contains("|")
         }
+        async let antigravity = Task.detached(priority: .userInitiated) {
+            Self.readAntigravity(
+                observer: observer,
+                enabled: families.contains("antigravity"),
+                profileHomes: antigravityProfileHomes
+            )
+        }.value
         async let claude = Task.detached(priority: .userInitiated) {
             Self.readClaude(
                 observer: observer,
@@ -70,7 +92,28 @@ extension ProviderAccountAssembly {
                 listDirectories: listCodexHomeDirectories
             )
         }.value
-        return await ProviderAccountDiscoveryReadout(claude: claude, codex: codex)
+        return await ProviderAccountDiscoveryReadout(antigravity: antigravity, claude: claude, codex: codex)
+    }
+
+    nonisolated static func readAntigravity(
+        observer: DefaultAccountObserver,
+        enabled: Bool,
+        profileHomes: [String] = []
+    ) -> ProviderAccountDiscoveryReadout.Antigravity? {
+        let cleanedHomes = profileHomes
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard enabled, !cleanedHomes.isEmpty else { return nil }
+        let defaultAnchor = observer.homeDirectory().standardizedFileURL.path
+        let outcome = observer.observeAntigravity()
+        let profiles = cleanedHomes.map {
+            AntigravityProfileObservation(directory: $0, outcome: observer.observeAntigravity(profileHome: $0))
+        }
+        return ProviderAccountDiscoveryReadout.Antigravity(
+            defaultAnchor: defaultAnchor,
+            outcome: outcome,
+            profiles: profiles
+        )
     }
 
     nonisolated static func readClaude(

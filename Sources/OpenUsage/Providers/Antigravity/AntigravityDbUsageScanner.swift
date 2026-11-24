@@ -10,6 +10,7 @@ actor AntigravityDbUsageScanner {
     static let batchSize = 8
 
     private let sqlite: SQLiteAccessing
+    private let geminiHomePath: String
     private let conversationsDirectories: @Sendable () throws -> [String]
     private let readFailureReporter: UsageLogReadFailureReporter
     private let oversizedBlobReporter: UsageLogReadFailureReporter
@@ -17,12 +18,16 @@ actor AntigravityDbUsageScanner {
 
     init(
         sqlite: SQLiteAccessing = SQLiteCLIAccessor(),
-        conversationsDirectories: @escaping @Sendable () throws -> [String] = AntigravityDbUsageScanner.defaultConversationsDirectories,
+        geminiHome: String = AntigravityDbUsageScanner.geminiHome,
+        conversationsDirectories: (@Sendable () throws -> [String])? = nil,
         readFailureWarning: UsageLogReadFailureReporter.Warning? = nil,
         oversizedBlobWarning: UsageLogReadFailureReporter.Warning? = nil
     ) {
         self.sqlite = sqlite
-        self.conversationsDirectories = conversationsDirectories
+        self.geminiHomePath = geminiHome
+        self.conversationsDirectories = conversationsDirectories ?? {
+            try AntigravityDbUsageScanner.conversationsDirectories(underGeminiHome: geminiHome)
+        }
         self.readFailureReporter = UsageLogReadFailureReporter(
             logTag: LogTag.plugin("antigravity"),
             warning: readFailureWarning
@@ -65,7 +70,7 @@ actor AntigravityDbUsageScanner {
         do {
             directories = try conversationsDirectories().map(expandHome)
         } catch {
-            failingPaths[Self.geminiHome] = error.localizedDescription
+            failingPaths[geminiHomePath] = error.localizedDescription
         }
 
         let discovered = Self.discoverDatabaseFiles(in: directories)
@@ -74,7 +79,7 @@ actor AntigravityDbUsageScanner {
 
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
         // The home listing is checked every scan, so a remembered listing failure clears once it recovers.
-        let checkedPaths = Set(paths).union(directories).union([Self.geminiHome])
+        let checkedPaths = Set(paths).union(directories).union([geminiHomePath])
         scanCache = scanCache.filter {
             checkedPaths.contains($0.key) && $0.value.fingerprint.latestModification >= since
         }

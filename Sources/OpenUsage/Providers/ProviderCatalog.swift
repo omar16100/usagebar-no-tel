@@ -8,6 +8,7 @@ enum ProviderCatalog {
         defaults: UserDefaults = .standard,
         claudeCards: [ClaudeAccountCard] = [],
         codex: CodexAccountDiscovery = CodexAccountDiscovery(),
+        antigravityCards: [AntigravityAccountCard] = [],
         claudeIdentityKeys: [String: String] = [:]
     ) -> [ProviderRuntime] {
         // Default provider order (see AGENTS.md "## Providers"): the three established providers first,
@@ -69,9 +70,56 @@ enum ProviderCatalog {
                 )
             }
         }
+        providers.append(CursorProvider())
+        let businessOAuthClient = AntigravityUsageClient.configuredBusinessOAuthClient(defaults: defaults)
+        if antigravityCards.isEmpty {
+            providers.append(AntigravityProvider(
+                usageClient: AntigravityUsageClient(businessOAuthClient: businessOAuthClient)
+            ))
+        } else {
+            let singleCard = antigravityCards.count == 1
+            providers += antigravityCards.map { card in
+                let provider = AntigravityProvider.makeProvider(
+                    id: card.id,
+                    displayName: singleCard ? "Antigravity" : card.displayName
+                )
+                let authStore: AntigravityAuthStore
+                let usageClient: AntigravityUsageClient
+                let dbUsageScanner: AntigravityDbUsageScanner
+                if let profileHome = card.profileHome {
+                    let geminiHome = profileHome.trimmingTrailingSlashes + "/.gemini"
+                    authStore = AntigravityAuthStore(
+                        credentialSource: .tokenFile(AntigravityAuthStore.tokenFilePath(forHome: profileHome)),
+                        cachePath: AntigravityAuthStore.cachePath(forProviderID: card.id)
+                    )
+                    usageClient = AntigravityUsageClient(
+                        cloudCodeBaseURLs: AntigravityUsageClient.cliCloudCodeURLs,
+                        businessOAuthClient: businessOAuthClient
+                    )
+                    dbUsageScanner = AntigravityDbUsageScanner(
+                        geminiHome: geminiHome,
+                        conversationsDirectories: {
+                            try AntigravityDbUsageScanner.conversationsDirectories(underGeminiHome: geminiHome)
+                        }
+                    )
+                } else {
+                    authStore = AntigravityAuthStore(
+                        credentialSource: .keychain,
+                        cachePath: AntigravityAuthStore.cachePath(forProviderID: card.id)
+                    )
+                    usageClient = AntigravityUsageClient(businessOAuthClient: businessOAuthClient)
+                    dbUsageScanner = AntigravityDbUsageScanner()
+                }
+                return AntigravityProvider(
+                    provider: provider,
+                    authStore: authStore,
+                    usageClient: usageClient,
+                    dbUsageScanner: dbUsageScanner,
+                    usesLanguageServer: singleCard && card.profileHome == nil
+                )
+            }
+        }
         providers += [
-            CursorProvider(),
-            AntigravityProvider(),
             CopilotProvider(defaults: defaults),
             DevinProvider(),
             GrokProvider(),

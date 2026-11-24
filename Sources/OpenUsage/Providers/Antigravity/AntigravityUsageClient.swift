@@ -32,6 +32,12 @@ struct AntigravityUsageClient: Sendable {
         "https://cloudcode-pa.googleapis.com",
         "https://daily-cloudcode-pa.googleapis.com"
     ]
+    /// Standalone `agy` CLI sessions route to `daily-cloudcode-pa`; isolated CLI profiles query it
+    /// first so they read the CLI's live Gemini pool instead of an idle production pool.
+    static let cliCloudCodeURLs = [
+        "https://daily-cloudcode-pa.googleapis.com",
+        "https://cloudcode-pa.googleapis.com"
+    ]
     static let fetchModelsPath = "/v1internal:fetchAvailableModels"
     static let loadCodeAssistPath = "/v1internal:loadCodeAssist"
     static let retrieveQuotaPath = "/v1internal:retrieveUserQuota"
@@ -49,13 +55,19 @@ struct AntigravityUsageClient: Sendable {
     /// Loopback session that trusts the LS's self-signed cert; remote calls use full validation.
     var lsHTTP: HTTPClient
     var http: HTTPClient
+    var cloudCodeBaseURLs: [String]
+    var businessOAuthClient: BusinessOAuthClient?
 
     init(
         lsHTTP: HTTPClient = URLSessionHTTPClient(allowsInsecureLoopback: true),
-        http: HTTPClient = URLSessionHTTPClient()
+        http: HTTPClient = URLSessionHTTPClient(),
+        cloudCodeBaseURLs: [String] = AntigravityUsageClient.cloudCodeURLs,
+        businessOAuthClient: BusinessOAuthClient? = AntigravityUsageClient.configuredBusinessOAuthClient()
     ) {
         self.lsHTTP = lsHTTP
         self.http = http
+        self.cloudCodeBaseURLs = cloudCodeBaseURLs
+        self.businessOAuthClient = businessOAuthClient
     }
 
     /// Call a language-server RPC method. Returns nil on a transport failure (port not the live one).
@@ -107,7 +119,7 @@ struct AntigravityUsageClient: Sendable {
     )
 
     private func cloudCode(path: String, token: String, userAgent: String, payload: Data) async -> CloudCodeOutcome {
-        for base in Self.cloudCodeURLs {
+        for base in cloudCodeBaseURLs {
             guard let url = URL(string: base + path) else { continue }
             let request = Self.cloudCodeRequest(url: url, token: token, userAgent: userAgent, payload: payload)
             guard let response = try? await http.send(request) else { continue }
@@ -133,7 +145,7 @@ struct AntigravityUsageClient: Sendable {
     ) async -> CloudCodeAllHostsOutcome {
         let payload = (try? JSONSerialization.data(withJSONObject: body)) ?? Data("{}".utf8)
         var responses: [HTTPResponse] = []
-        for (index, base) in Self.cloudCodeURLs.enumerated() {
+        for (index, base) in cloudCodeBaseURLs.enumerated() {
             guard let url = URL(string: base + path) else { continue }
             let request = Self.cloudCodeRequest(url: url, token: token, userAgent: userAgent, payload: payload)
             guard let response = try? await http.send(request) else { continue }
@@ -179,11 +191,24 @@ struct AntigravityUsageClient: Sendable {
     /// Exchange a Google refresh token for a fresh access token. Distinguishes a dead refresh token
     /// (4xx, e.g. `invalid_grant`) from a transient failure (5xx / network / undecodable) so the caller
     /// can report "sign-in expired" vs "temporarily unavailable" correctly.
-    func refreshGoogleToken(_ refreshToken: String) async -> TokenRefreshOutcome {
+    func refreshGoogleToken(_ refreshToken: String, authMethod: String? = nil) async -> TokenRefreshOutcome {
         guard let url = URL(string: Self.googleOAuthURL) else { return .unavailable }
+        let clientID: String
+        let clientSecret: String
+        if authMethod == "gcp" {
+            guard let business = businessOAuthClient else {
+                AppLog.warn(LogTag.auth("antigravity"), "Business OAuth client is not configured; cannot refresh business token")
+                return .unavailable
+            }
+            clientID = business.clientID
+            clientSecret = business.clientSecret
+        } else {
+            clientID = Self.googleClientID
+            clientSecret = Self.googleClientSecret
+        }
         let form = [
-            "client_id=\(Self.googleClientID.urlFormEncoded)",
-            "client_secret=\(Self.googleClientSecret.urlFormEncoded)",
+            "client_id=\(clientID.urlFormEncoded)",
+            "client_secret=\(clientSecret.urlFormEncoded)",
             "refresh_token=\(refreshToken.urlFormEncoded)",
             "grant_type=refresh_token"
         ].joined(separator: "&")

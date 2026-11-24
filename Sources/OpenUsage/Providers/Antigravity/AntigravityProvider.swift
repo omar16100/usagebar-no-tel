@@ -15,44 +15,53 @@ import Foundation
 /// which are 5h-only — the weekly meters read "No data" there.
 @MainActor
 final class AntigravityProvider: ProviderRuntime {
-    let provider = Provider(id: "antigravity", displayName: "Antigravity", icon: .providerMark("antigravity"))
+    static func makeProvider(id: String = "antigravity", displayName: String = "Antigravity") -> Provider {
+        Provider(id: id, displayName: displayName, icon: .providerMark("antigravity"))
+    }
+
+    let provider: Provider
 
     let authStore: AntigravityAuthStore
     let usageClient: AntigravityUsageClient
     let discovery: LanguageServerDiscovery
     let dbUsageScanner: AntigravityDbUsageScanner
+    let usesLanguageServer: Bool
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
 
     private static let usageSourceNote = "From your Antigravity conversations (estimated)"
 
     init(
+        provider: Provider = AntigravityProvider.makeProvider(),
         authStore: AntigravityAuthStore = AntigravityAuthStore(),
         usageClient: AntigravityUsageClient = AntigravityUsageClient(),
         discovery: LanguageServerDiscovery = LanguageServerDiscovery(),
         dbUsageScanner: AntigravityDbUsageScanner = AntigravityDbUsageScanner(),
+        usesLanguageServer: Bool = true,
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
     ) {
+        self.provider = provider
         self.authStore = authStore
         self.usageClient = usageClient
         self.discovery = discovery
         self.dbUsageScanner = dbUsageScanner
+        self.usesLanguageServer = usesLanguageServer
         self.now = now
         self.pricing = pricing
     }
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .percent(id: AntigravityMetric.geminiID, provider: provider, title: AntigravityMetric.sessionLabel, sessionStartSignal: .zeroUsage)
+            .percent(id: AntigravityMetric.geminiID(for: provider.id), provider: provider, title: AntigravityMetric.sessionLabel, sessionStartSignal: .zeroUsage)
                 .exportingLimit("geminiSession", unit: "percent"),
-            .percent(id: AntigravityMetric.geminiWeeklyID, provider: provider, title: AntigravityMetric.weeklyLabel)
+            .percent(id: AntigravityMetric.geminiWeeklyID(for: provider.id), provider: provider, title: AntigravityMetric.weeklyLabel)
                 .exportingLimit("geminiWeekly", unit: "percent"),
-            .percent(id: AntigravityMetric.argonWeeklyID, provider: provider, title: AntigravityMetric.argonWeeklyLabel)
+            .percent(id: AntigravityMetric.argonWeeklyID(for: provider.id), provider: provider, title: AntigravityMetric.argonWeeklyLabel)
                 .exportingLimit("argonWeekly", unit: "percent"),
-            .percent(id: AntigravityMetric.claudeID, provider: provider, title: AntigravityMetric.claudeLabel, sessionStartSignal: .zeroUsage)
+            .percent(id: AntigravityMetric.claudeID(for: provider.id), provider: provider, title: AntigravityMetric.claudeLabel, sessionStartSignal: .zeroUsage)
                 .exportingLimit("nonGeminiSession", unit: "percent"),
-            .percent(id: AntigravityMetric.claudeWeeklyID, provider: provider, title: AntigravityMetric.claudeWeeklyLabel)
+            .percent(id: AntigravityMetric.claudeWeeklyID(for: provider.id), provider: provider, title: AntigravityMetric.claudeWeeklyLabel)
                 .exportingLimit("nonGeminiWeekly", unit: "percent"),
             .usageTrend(provider: provider)
                 .exportingHistory(
@@ -127,16 +136,18 @@ final class AntigravityProvider: ProviderRuntime {
     }
 
     private func probe() async throws -> StrategyResult {
-        if let result = await probeLS(
-            processName: "language_server",
-            markers: ["antigravity", "antigravity-ide"],
-            csrfFlag: "--csrf_token",
-            portFlag: "--extension_server_port"
-        ) {
-            return result
-        }
-        if let result = await probeLS(processName: "agy", markers: [], csrfFlag: "", portFlag: nil) {
-            return result
+        if usesLanguageServer {
+            if let result = await probeLS(
+                processName: "language_server",
+                markers: ["antigravity", "antigravity-ide"],
+                csrfFlag: "--csrf_token",
+                portFlag: "--extension_server_port"
+            ) {
+                return result
+            }
+            if let result = await probeLS(processName: "agy", markers: [], csrfFlag: "", portFlag: nil) {
+                return result
+            }
         }
         return try await probeCloudCode()
     }
@@ -238,7 +249,7 @@ final class AntigravityProvider: ProviderRuntime {
 
         var sawAuthFailure = false
         for token in tokens {
-            switch await fetchCloudCode(token: token) {
+            switch await fetchCloudCode(token: token, credentials: keychainToken) {
             case .success(let result): return result
             case .authFailed: sawAuthFailure = true
             case .unavailable: break
@@ -248,7 +259,7 @@ final class AntigravityProvider: ProviderRuntime {
         // Only refresh on evidence of an auth failure (or no token to try) — a transient Cloud Code
         // outage must not trigger a Google OAuth refresh every cycle.
         if sawAuthFailure || tokens.isEmpty, let refreshToken = keychainToken.refreshToken {
-            switch await usageClient.refreshGoogleToken(refreshToken) {
+            switch await usageClient.refreshGoogleToken(refreshToken, authMethod: keychainToken.authMethod) {
             case .refreshed(let accessToken, let expiresIn):
                 await loadOffMainActor {
                     authStore.cacheToken(
@@ -257,7 +268,7 @@ final class AntigravityProvider: ProviderRuntime {
                         sourceRefreshToken: refreshToken
                     )
                 }
-                switch await fetchCloudCode(token: accessToken) {
+                switch await fetchCloudCode(token: accessToken, credentials: keychainToken) {
                 case .success(let result): return result
                 case .authFailed: throw AntigravityError.authExpired
                 // The refreshed token is valid, so a non-2xx here is a transient outage, not bad auth.
@@ -286,7 +297,17 @@ final class AntigravityProvider: ProviderRuntime {
         case unavailable
     }
 
-    private func fetchCloudCode(token: String) async -> CloudCodeProbe {
+    private func fetchCloudCode(token: String, credentials: AntigravityKeychainToken) async -> CloudCodeProbe {
+        if credentials.isBusinessAccount {
+            switch await usageClient.businessQuota(token: token, credentials: credentials) {
+            case .ok(let data):
+                guard let lines = AntigravityUsageMapper.parseQuotaSummary(data) else { return .unavailable }
+                return .success(StrategyResult(plan: credentials.businessPlan, lines: lines))
+            case .authFailed: return .authFailed
+            case .unavailable: return .unavailable
+            }
+        }
+
         // Authoritative first: the quota summary (merged pools + weekly windows). A parsed summary —
         // even one with zero usable buckets — is the answer and must never fall into the legacy chain
         // below, which fabricates "fully used" from missing quota info. A 404 (build without the RPC)
@@ -295,7 +316,7 @@ final class AntigravityProvider: ProviderRuntime {
         switch await usageClient.cloudCodeAllHosts(
             path: AntigravityUsageClient.quotaSummaryPath,
             token: token,
-            userAgent: "antigravity",
+            userAgent: AntigravityUsageClient.clientUserAgent,
             body: [:],
             isComplete: AntigravityUsageMapper.isCompleteSummary
         ) {

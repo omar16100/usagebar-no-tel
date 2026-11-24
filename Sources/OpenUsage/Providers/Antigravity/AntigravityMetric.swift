@@ -17,6 +17,12 @@ enum AntigravityMetric {
     static let claudeID = "antigravity.claude"
     static let claudeWeeklyID = "antigravity.claudeWeekly"
 
+    static func geminiID(for providerID: String) -> String { "\(providerID).geminiPro" }
+    static func geminiWeeklyID(for providerID: String) -> String { "\(providerID).geminiWeekly" }
+    static func argonWeeklyID(for providerID: String) -> String { "\(providerID).argonWeekly" }
+    static func claudeID(for providerID: String) -> String { "\(providerID).claude" }
+    static func claudeWeeklyID(for providerID: String) -> String { "\(providerID).claudeWeekly" }
+
     static let sessionLabel = "Session"
     static let weeklyLabel = "Weekly"
     static let argonWeeklyLabel = "Argon Weekly"

@@ -177,4 +177,58 @@ struct DefaultAccountObserver: Sendable {
         return ((profile?["email"] ?? payload["email"]) as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty?.lowercased()
     }
+
+    // MARK: - Antigravity
+
+    /// Reads the Antigravity account signed in at the default home (macOS Keychain, falling back to
+    /// the default token file) or at an explicit isolated profile home (`<home>/.gemini/antigravity-cli/antigravity-oauth-token`).
+    func observeAntigravity(profileHome: String? = nil) -> Outcome {
+        if let profileHome {
+            let anchor = URL(fileURLWithPath: expandTilde(profileHome)).standardizedFileURL.path
+            let tokenPath = AntigravityAuthStore.tokenFilePath(forHome: anchor)
+            let raw: String?
+            do {
+                raw = try files.readTextIfPresent(tokenPath)
+            } catch {
+                return .unresolved(reason: "token file unreadable: \(error.localizedDescription)")
+            }
+            guard let raw else { return .absent }
+            guard let token = AntigravityAuthStore.extractToken(fromKeychainRaw: raw) else {
+                return .unresolved(reason: "token file is malformed")
+            }
+            guard let identityKey = token.identityKey else {
+                return .unresolved(reason: "token file present but names no account")
+            }
+            return .resolved(identityKey: identityKey, label: token.displayLabel, anchor: anchor)
+        }
+
+        let anchor = homeDirectory().standardizedFileURL.path
+        let raw: String?
+        do {
+            raw = try keychain.readGenericPassword(
+                service: AntigravityAuthStore.keychainService,
+                account: AntigravityAuthStore.keychainAccount
+            )
+        } catch {
+            return .unresolved(reason: "keychain credential unreadable")
+        }
+        let sourceRaw: String?
+        if let raw {
+            sourceRaw = raw
+        } else {
+            do {
+                sourceRaw = try files.readTextIfPresent(AntigravityAuthStore.tokenFilePath(forHome: anchor))
+            } catch {
+                return .unresolved(reason: "token file unreadable: \(error.localizedDescription)")
+            }
+        }
+        guard let sourceRaw else { return .absent }
+        guard let token = AntigravityAuthStore.extractToken(fromKeychainRaw: sourceRaw) else {
+            return .unresolved(reason: "credentials are malformed")
+        }
+        guard let identityKey = token.identityKey else {
+            return .unresolved(reason: "credentials present but name no account")
+        }
+        return .resolved(identityKey: identityKey, label: token.displayLabel, anchor: anchor)
+    }
 }

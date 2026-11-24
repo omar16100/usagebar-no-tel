@@ -17,6 +17,11 @@ enum UsageHistoryAggregator {
         }).union(providerIdentityKeys.keys.filter {
             ProviderAccountID.family(of: $0) == "claude"
         })
+        let localAntigravityCards = Set(descriptors.keys.filter {
+            ProviderAccountID.family(of: $0) == "antigravity"
+        }).union(providerIdentityKeys.keys.filter {
+            ProviderAccountID.family(of: $0) == "antigravity"
+        })
         for (providerID, descriptor) in descriptors where descriptor.scope == .machineLocal {
             if let local = localSnapshots[providerID]?.usageHistory {
                 inputs[providerID, default: []].append(local)
@@ -29,6 +34,14 @@ enum UsageHistoryAggregator {
                         family: "claude",
                         identity: providerIdentityKeys[providerID],
                         allowsUnattributedHistory: localClaudeCards.count <= 1
+                    )
+                } else if ProviderAccountID.family(of: providerID) == "antigravity",
+                          localAntigravityCards.count > 1 || providerIdentityKeys[providerID] != nil || providerID.contains("@") {
+                    peer = accountHistory(
+                        in: document,
+                        family: "antigravity",
+                        identity: providerIdentityKeys[providerID],
+                        allowsUnattributedHistory: localAntigravityCards.count <= 1
                     )
                 } else if ProviderAccountID.family(of: providerID) == "codex",
                           providerIdentityKeys[providerID]?.contains("|") == true || providerID.contains("@") {

@@ -1,5 +1,14 @@
 import Foundation
 
+struct AntigravityAccountCard: Equatable, Sendable {
+    let id: String
+    let identityKey: String?
+    let displayName: String
+    /// `nil` for the default home (Keychain + `~/.gemini`); standardized home path for an
+    /// explicit isolated profile home (e.g. `~/.agy-personal`).
+    var profileHome: String? = nil
+}
+
 struct ClaudeAccountCard: Equatable, Sendable {
     let id: String
     let identityKey: String
@@ -13,17 +22,19 @@ struct ClaudeAccountCard: Equatable, Sendable {
     var organizationName: String? = nil
 }
 
-/// The launch-time account pass: read accounts at default homes, configured Claude profiles and Desktop,
+/// The launch-time account pass: read accounts at default homes, configured Claude/Antigravity profiles and Desktop,
 /// reconcile the account registry, and expose the per-card identity map that the snapshot cache's
 /// account stamp consumes. Runs once per launch (app) or per invocation (one-shot CLI); a mid-run
 /// swap is caught on the next launch.
 @MainActor
 struct ProviderAccountAssembly {
     static let claudeConfigDirectoriesKey = "openusage.claude.configDirectories.v1"
+    static let antigravityProfileHomesKey = "openusage.antigravity.profileHomes.v1"
 
     /// Card id → the account identity signed in there this launch. Accounts whose identity could
     /// not be resolved are absent.
     let identityKeysByCard: [String: String]
+    var antigravityCards: [AntigravityAccountCard] = []
     var claudeCards: [ClaudeAccountCard] = []
     var codex = CodexAccountDiscovery()
     var codexCards: [CodexAccountCard] { codex.cards }
@@ -48,6 +59,7 @@ struct ProviderAccountAssembly {
         let families = shellFactsReadable
             ? ProviderAccountID.families
             : ProviderAccountID.families.filter { family in
+                if family == "antigravity" { return true }
                 guard let key = Self.homeOverrideKeys[family] else { return false }
                 return ProcessInfo.processInfo.environment[key]?.nilIfEmpty != nil
             }
@@ -61,7 +73,8 @@ struct ProviderAccountAssembly {
             ),
             accountsStore: ProviderAccountsStore(defaults: defaults),
             families: families,
-            claudeConfigDirectories: defaults.stringArray(forKey: claudeConfigDirectoriesKey) ?? []
+            claudeConfigDirectories: defaults.stringArray(forKey: claudeConfigDirectoriesKey) ?? [],
+            antigravityProfileHomes: defaults.stringArray(forKey: antigravityProfileHomesKey) ?? []
         )
         let assemblyDurationMS = Int((ProcessInfo.processInfo.systemUptime - assemblyStartedAt) * 1_000)
         AppLog.info(.config, "account assembly duration: \(assemblyDurationMS) ms")
@@ -85,6 +98,7 @@ struct ProviderAccountAssembly {
         accountsStore: ProviderAccountsStore,
         families: Set<String> = ProviderAccountID.families,
         claudeConfigDirectories: [String] = [],
+        antigravityProfileHomes: [String] = [],
         listCodexHomeDirectories: @escaping @Sendable (String) -> [String] = CodexHomeScanner.listSubdirectories,
         desktop: ClaudeDesktopAuthStore? = nil,
         listDesktopOrganizationDirectories: @escaping @Sendable (URL) -> [String] = { root in
@@ -105,6 +119,7 @@ struct ProviderAccountAssembly {
             accountsStore: accountsStore,
             families: families,
             claudeConfigDirectories: claudeConfigDirectories,
+            antigravityProfileHomes: antigravityProfileHomes,
             listCodexHomeDirectories: listCodexHomeDirectories,
             desktop: desktop,
             listDesktopOrganizationDirectories: listDesktopOrganizationDirectories
@@ -122,6 +137,14 @@ struct ProviderAccountAssembly {
         } ?? CodexAccountDiscovery()
         let codexCards = codex.cards
         var identityKeys = Dictionary(uniqueKeysWithValues: codexCards.map { ($0.id, $0.identity.key) })
+        let antigravityCards = readout.antigravity.map {
+            makeAntigravityCards(readout: $0, accountsStore: accountsStore)
+        } ?? []
+        for card in antigravityCards {
+            if let key = card.identityKey {
+                identityKeys[card.id] = key
+            }
+        }
         var observations: [ProviderAccountsStore.Observation] = []
 
         let outcomes: [(family: String, outcome: DefaultAccountObserver.Outcome)] = [
@@ -151,7 +174,11 @@ struct ProviderAccountAssembly {
 
         guard let claudeReadout = readout.claude else {
             accountsStore.reconcile(with: observations)
-            return ProviderAccountAssembly(identityKeysByCard: identityKeys, codex: codex)
+            return ProviderAccountAssembly(
+                identityKeysByCard: identityKeys,
+                antigravityCards: antigravityCards,
+                codex: codex
+            )
         }
 
         let swapAccounts = claudeReadout.swapAccounts
@@ -174,7 +201,11 @@ struct ProviderAccountAssembly {
         if let claudeIdentity = identityKeys["claude"], !claudeIdentity.contains("|"), swapAccounts.isEmpty,
            claudeReadout.profiles.isEmpty {
             accountsStore.reconcile(with: observations)
-            return ProviderAccountAssembly(identityKeysByCard: identityKeys, codex: codex)
+            return ProviderAccountAssembly(
+                identityKeysByCard: identityKeys,
+                antigravityCards: antigravityCards,
+                codex: codex
+            )
         }
 
         // Explicit profile homes can name accounts that Desktop no longer has signed in.
@@ -323,7 +354,114 @@ struct ProviderAccountAssembly {
         for index in cards.indices {
             cards[index].additionalLogDirectories = swapAccounts.map(\.sessionDirectory)
         }
-        return ProviderAccountAssembly(identityKeysByCard: identityKeys, claudeCards: cards, codex: codex)
+        return ProviderAccountAssembly(
+            identityKeysByCard: identityKeys,
+            antigravityCards: antigravityCards,
+            claudeCards: cards,
+            codex: codex
+        )
+    }
+
+    @MainActor
+    private static func makeAntigravityCards(
+        readout: ProviderAccountDiscoveryReadout.Antigravity,
+        accountsStore: ProviderAccountsStore
+    ) -> [AntigravityAccountCard] {
+        var observations: [ProviderAccountsStore.Observation] = []
+        var defaultIdentity: String?
+        var defaultUnresolved = false
+        switch readout.outcome {
+        case .resolved(let identity, let label, let anchor):
+            defaultIdentity = identity
+            observations.append(ProviderAccountsStore.Observation(
+                family: "antigravity",
+                identityKey: identity,
+                label: label,
+                sources: [ProviderAccountSource(kind: .defaultHome, anchor: anchor, holdsDefaultSource: true)]
+            ))
+            AppLog.info(.config, "accounts: antigravity default identity resolved (\(ProviderAccountID.make(family: "antigravity", identityKey: identity)))")
+        case .unresolved(let reason):
+            defaultUnresolved = true
+            AppLog.info(.config, "accounts: antigravity default identity unresolved — \(reason)")
+        case .absent:
+            AppLog.debug(.config, "accounts: antigravity has no default login")
+        }
+
+        var profileHomesByIdentity: [String: String] = [:]
+        for profile in readout.profiles {
+            switch profile.outcome {
+            case .resolved(let identity, let label, let anchor):
+                if anchor == readout.defaultAnchor { continue }
+                let source = ProviderAccountSource(
+                    kind: .configDirectory, anchor: anchor, holdsDefaultSource: false
+                )
+                if let index = observations.firstIndex(where: {
+                    $0.family == "antigravity" && $0.identityKey == identity
+                }) {
+                    if !observations[index].sources.contains(where: { $0.anchor == anchor }) {
+                        observations[index].sources.append(source)
+                    }
+                } else {
+                    let existingLabel = accountsStore.records.first {
+                        $0.family == "antigravity" && $0.identityKey == identity
+                    }?.label
+                    observations.append(.init(
+                        family: "antigravity", identityKey: identity, label: existingLabel ?? label, sources: [source]
+                    ))
+                }
+                if profileHomesByIdentity[identity] == nil { profileHomesByIdentity[identity] = anchor }
+            case .unresolved(let reason):
+                AppLog.warn(.config, "Antigravity profile \(profile.directory) unresolved: \(reason)")
+            case .absent:
+                AppLog.warn(.config, "Antigravity profile \(profile.directory) has no login")
+            }
+        }
+
+        let records = accountsStore.reconcile(with: observations)
+        var cards: [AntigravityAccountCard] = []
+
+        if let defaultIdentity,
+           let record = records.first(where: {
+               $0.family == "antigravity" && $0.identityKey == defaultIdentity && !$0.removedTombstone
+           })
+        {
+            let label = record.label?.nilIfEmpty ?? "Default"
+            cards.append(AntigravityAccountCard(
+                id: record.id,
+                identityKey: defaultIdentity,
+                displayName: "Antigravity — \(label)",
+                profileHome: nil
+            ))
+        } else if defaultUnresolved {
+            cards.append(AntigravityAccountCard(
+                id: "antigravity",
+                identityKey: nil,
+                displayName: "Antigravity",
+                profileHome: nil
+            ))
+        }
+
+        for observation in observations where observation.family == "antigravity"
+            && observation.identityKey != defaultIdentity
+        {
+            let identity = observation.identityKey
+            guard let home = profileHomesByIdentity[identity],
+                  let record = records.first(where: {
+                      $0.family == "antigravity" && $0.identityKey == identity && !$0.removedTombstone
+                  })
+            else { continue }
+            guard !cards.contains(where: { $0.id == record.id }) else { continue }
+            let fallbackName = URL(fileURLWithPath: home).lastPathComponent
+            let label = record.label?.nilIfEmpty ?? fallbackName
+            cards.append(AntigravityAccountCard(
+                id: record.id,
+                identityKey: identity,
+                displayName: "Antigravity — \(label)",
+                profileHome: home
+            ))
+        }
+
+        return cards
     }
 
     private static func organizationLabel(_ value: String?) -> String? {
